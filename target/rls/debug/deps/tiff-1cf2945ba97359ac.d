@@ -1,0 +1,12 @@
+D:\rust\proj\codex\target\rls\debug\deps\tiff-1cf2945ba97359ac.rmeta: C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\lib.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\mod.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\ifd.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\stream.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\mod.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\colortype.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\writer.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\error.rs
+
+D:\rust\proj\codex\target\rls\debug\deps\tiff-1cf2945ba97359ac.d: C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\lib.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\mod.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\ifd.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\stream.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\mod.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\colortype.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\writer.rs C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\error.rs
+
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\lib.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\mod.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\ifd.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\decoder\stream.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\mod.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\colortype.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\encoder\writer.rs:
+C:\Users\Richard\.cargo\registry\src\github.com-1ecc6299db9ec823\tiff-0.4.0\src\error.rs:
