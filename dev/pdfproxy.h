@@ -21,8 +21,8 @@
 	
 	TESTF(pdfa_init, (pdfarea_t * area), (area))
 	TESTF(pdfa_write, (pdfarea_t * area, const char * bytes, size_t len), (area, bytes, len))
-	TESTF(pdfa_newln, (pdfarea_t * area), (area))
-	TESTF(pdfa_newpg, (pdfarea_t * area), (area))
+	TESTF(pdfa_shx, (pdfarea_t * area, int xpts), (area))
+	TESTF(pdfa_shy, (pdfarea_t * area, int ypts), (area))
 	TESTF(pdfa_push, (pdfarea_t * base, pdfarea_t * add), (base, add))
 	TESTF(pdfa_free, (pdfarea_t * area), (area))
 

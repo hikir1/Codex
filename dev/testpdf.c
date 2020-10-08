@@ -2,7 +2,9 @@
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
+
 #include "pdfproxy.h"
+#include "util.h"
 
 #define DEF_BUF_LEN 1
 #define PT_PER_LN 12
@@ -60,7 +62,10 @@ int test_pdfa_write(struct pdfarea * area, const char * bytes, size_t len) {
 	return SUCCESS;
 }
 
-int test_pdfa_movey(struct pdfarea * area, int y) {
+// approximate by adding new lines
+// TODO: worry about negative offset
+// TODO: worry about maintaining x offset
+int test_pdfa_shy(struct pdfarea * area, int ypts) {
 	assert(area);
 	assert(area->buf);
 	assert(y >= 0);
@@ -73,7 +78,9 @@ int test_pdfa_movey(struct pdfarea * area, int y) {
 	return test_pdfa_write(area, lines, numlines);
 }
 
-int test_pdfa_movex(struct pdfarea * area, int x) {
+// approximate by adding spaces
+// TODO: worry about negative offset
+int test_pdfa_shx(struct pdfarea * area, int xpts) {
 	assert(area);
 	assert(area->buf);
 	assert(x >= 0);
@@ -127,7 +134,7 @@ int test_pdf_push(FILE ** pdf, struct pdfarea * area) {
 	assert(area->buf);
 
 	if (fwrite(area->buf, 1, area->len, area->buf, pdf) != area->len) {
-		ERR("Failed to write to pdf file");
+		ERR("Failed to write to PDF file");
 		return FAILURE;
 	}
 	return SUCCESS;
