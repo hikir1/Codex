@@ -16,6 +16,7 @@
 #define ZERO(ptr, size) (void)
 #endif
 
+typedef int Status;
 #define SUCCESS 0
 #define FAILURE 1
 

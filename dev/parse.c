@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #include "util.h"
-#include "pdfproxy.h"
+#include "doc.h"
 
 
 struct buffer {
@@ -17,10 +17,12 @@ struct buffer {
 	size_t lineno;
 };
 
+#if 0
 struct arealist {
 	struct arealist * next;
 	pdfarea_t area;
 };
+#endif
 
 void showctx(struct buffer * buf, char * pos) {
 	assert(buf);
@@ -281,43 +283,56 @@ int main(int argc, char * argv[]) {
 		fprintf(stderr, "Usage: %s <FILE>\n", argv[0]);
 		return EXIT_FAILURE;
 	}
-	FILE * in = fopen(argv[1], "r");
+
+	FILE * in = fopen(argv[1], "r"); // input file
+	char * docname = NULL; // output file name
+	int ret = EXIT_SUCCESS; // exit status
+
+	// check if opened succesfully
 	if (!in) {
 		LIBERR("Failed to open %s", argv[1]);
-		return EXIT_FAILURE;
+		ret = EXIT_FAILURE;
+		goto err;
 	}
+	// remove input buffering
 	if (setvbuf(in, NULL, _IONBF, 0) == -1) {
 		LIBERR("setvbuf");
-		fclose(in);
-		return EXIT_FAILURE;
+		ret = EXIT_FAILURE;
+		goto err;
 	}
-	char * suffix = strrchr(argv[1], '.');
-	size_t len_nosuffix = suffix? suffix - argv[1]: strlen(argv[1]);
-	#define PDF_SUFFIX ".pdf"
-	char * pdfname = malloc(len_nosuffix + sizeof(PDF_SUFFIX));
-	if (!pdfname) {
-		LIBERR("Failed to parse file name");
-		fclose(in);
-		return EXIT_FAILURE;
+	{ // calculate output file name
+		char * suffix = strrchr(argv[1], '.');
+		size_t len_nosuffix = suffix? suffix - argv[1]: strlen(argv[1]);
+		docname = malloc(len_nosuffix + strlen(doc_suffix));
+		if (!docname) {
+			LIBERR("Failed to parse file name.");
+			ret = EXIT_FAILURE;
+			goto err;
+		}
+		memcpy(docname, argv[1], len_nosuffix);
+		memcpy(docname + len_nosuffix, doc_suffix, strlen(doc_suffix));
 	}
-	memcpy(pdfname, argv[1], len_nosuffix);
-	memcpy(pdfname + len_nosuffix, PDF_SUFFIX, sizeof(PDF_SUFFIX));
-	if (strcmp(argv[1], pdfname) == 0) {
-		free(pdfname);
-		fclose(in);
-		ERR("Input and output file must be different");
-		return FAILURE;
+	// ensure input and output files are different
+	if (strcmp(argv[1], docname) == 0) {
+		ERR("Input and output file must be different.");
+		ret = EXIT_FAILURE;
+		goto err;
 	}
-	pdf_t pdf;
-	if (pdf_open(&pdf, pdfname) == FAILURE) {
+	// create output document
+	Doc * doc;
+	if (!(doc = doc_open(docname))) {
 		LIBERR("Failed to create file %s", pdfname);
-		free(pdfname);
-		fclose(in);
-		return EXIT_FAILURE;
+		ret = EXIT_FAILURE;
+		goto err;
 	}
+	// parse input and write to document
+	if (parse(in, doc) == FAILURE)
+		ret = EXIT_FAILURE;
+	// close document
+	if (doc_close(doc) == FAILURE)
+		ret = EXIT_FAILURE;
+err:
 	free(pdfname);
-	int ret = parse(in, &pdf);
 	fclose(in);
-	pdf_close(&out);
-	return ret == FAILURE? EXIT_FAILURE: EXIT_SUCCESS;
+	return ret;
 }
