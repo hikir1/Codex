@@ -159,7 +159,6 @@ int parsepg(struct buffer * buf, struct arealist ** words) {
 				itr++;
 				NEXTLINE(buf, itr);
 			}
-			// TODO :env tokens
 		}
 		else if (*itr > ' ') {
 			char * start = itr;
@@ -181,12 +180,10 @@ int parsepg(struct buffer * buf, struct arealist ** words) {
 			}
 			*words = word;
 			words = &word->next;
-
-			// check if eof
-			if (!*itr)
-				return SUCCESS;
-			// TODO implement test_pdf_proxy.c (again?)
 		}
+		// check if eof
+		else if (!*itr)
+			return SUCCESS;
 		else {
 			itr++;
 			ENSURE1SF(buf, itr);
