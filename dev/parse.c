@@ -148,10 +148,10 @@ int parsepg(struct buffer * buf, struct arealist ** words) {
 				return SUCCESS;
 			}
 		}
-		else if (*itr == ':') {
+		else if (*itr == '#') {
 			itr++;
 			ENSURE1SF(buf, itr);
-			if (*itr == ':') {
+			if (*itr == '#') {
 				do {
 					itr++;
 					ENSURE1SF(buf, itr);
