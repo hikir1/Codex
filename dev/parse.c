@@ -228,36 +228,15 @@ int clear_words(struct arealist * words) {
 	}
 }
 
-int parse_loop(struct buffer * buf, pdf_t * pdf) {
-	char * itr;
-	struct arealist * words;
-	while (1) {
-		itr = buf->line;
-		while (*itr != '\n') {
-			if (*itr == '\0') {
-				if (feof(in))
-					return SUCCESS;
-				if (read_more(&buf) == FAILURE)
-					return FAILURE;
-			}
-			else if (*itr > 32) {
-				words = NULL;
-				int ret = handlepg(buf, pdf, &words);
-				clear_words(&words);
-				if (ret == FAILURE)
-					return FAILURE;
-			}
-		}
-		buf->line++;
-	}
-}
-
-int parse(FILE * in, pdf_t * pdf) {
+Status compile(FILE * in, const Doc * doc) {
 	#ifndef NDEBUG
+	// smaller size means detect problems faster
 	#define DEF_BUF_SIZE 4
 	#else
 	#define DEF_BUF_SIZE 32
 	#endif
+
+	// our custom input buffer
 	struct buffer buf = {
 		.in = in,
 		.start = malloc(DEF_BUF_SIZE),
@@ -265,15 +244,54 @@ int parse(FILE * in, pdf_t * pdf) {
 		.line = buf.start,
 		.lineno = 1
 	};
+	Status ret = SUCCESS;
 	if (!buf.start) {
 		LIBERRN();
 		return FAILURE;
 	}
+	
+	// attempt to read the first bytes
 	if (try_read(&buf, 0, DEF_BUF_SIZE - 1) == FAILURE) {
-		free(buf.start);
-		return FAILURE;
+		ret = FAILURE;
+		goto err;
 	}
-	int ret = parse_loop(&buf, pdf);
+
+	// read and compile until eof or error
+	while (1) {
+		char * itr = buf->line;
+
+		// process line by line
+		while (*itr != '\n') {
+
+			// check if end of buffer
+			if (*itr == '\0') {
+				// check if eof
+				if (feof(in))
+					goto break2;
+				// attempt to read more
+				if (read_more(&buf) == FAILURE) {
+					ret = FAILURE;
+					goto err;
+				}
+			}
+			
+			// if we hit a printable character,
+			//  compile what follows as a paragraph
+			else if (*itr > ' ') {
+				if (compile_pg(buf, doc) == FAILURE) {
+					ret = FAILURE;
+					goto err;
+				}
+			}
+		} // end of line
+
+		// update line count
+		buf->line++;
+
+	} // end of file
+
+break2:
+err:
 	free(buf.start);
 	return ret;
 }
@@ -325,8 +343,8 @@ int main(int argc, char * argv[]) {
 		ret = EXIT_FAILURE;
 		goto err;
 	}
-	// parse input and write to document
-	if (parse(in, doc) == FAILURE)
+	// compile input and write to document
+	if (compile(in, doc) == FAILURE)
 		ret = EXIT_FAILURE;
 	// close document
 	if (doc_close(doc) == FAILURE)
