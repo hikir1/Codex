@@ -17,13 +17,6 @@ struct buffer {
 	size_t lineno;
 };
 
-#if 0
-struct arealist {
-	struct arealist * next;
-	pdfarea_t area;
-};
-#endif
-
 void showctx(struct buffer * buf, char * pos) {
 	assert(buf);
 	assert(pos);
@@ -137,22 +130,32 @@ while (0)
 	(buf)->lineno++; \
 while(0)
 
-int parsepg(struct buffer * buf, struct arealist ** words) {
+Status compile_pg(struct buffer * buf, Doc * doc) {
+	Doc_pg * pg = doc_new_pg(doc);
+	if (!pg)
+		return FAILURE;
 	char * itr = buf.line;
-	assert(*buf->line == '\0');
+
+	// build paragraph until double newline, eof, or error
 	while (1) {
+
+		// newline
 		if (*itr == '\n') {
 			itr++;
 			ENSURE1SF(buf, itr);
 			NEXTLINE(buf, itr);
+			// second newline = end of pragraph
 			if (*itr == '\n') {
 				NEXTLINE(buf, itr+1);
 				return SUCCESS;
 			}
 		}
+
+		// pound
 		else if (*itr == '#') {
 			itr++;
 			ENSURE1SF(buf, itr);
+			// second pound = line comment
 			if (*itr == '#') {
 				do {
 					itr++;
@@ -162,73 +165,46 @@ int parsepg(struct buffer * buf, struct arealist ** words) {
 				NEXTLINE(buf, itr);
 			}
 		}
+
+		// word
 		else if (*itr > ' ') {
+			// make space for word
+			Doc_area * word = doc_new_area();
+			if (!word)
+				return FAILURE;
 			char * start = itr;
+			// find the last character
 			do {
 				itr++;
-				// if eof, break and finish parsing word, then return
+				// if eof, this is the last word
 				ENSURE1DF(buf, itr, break);
 			} while (*itr > ' ');
-			struct arealist * word = malloc(sizeof(struct arealist));
-			if (!word) {
-				LIBERRN();
+			// write word
+			if (doc_area_write(word, start, itr - start) == FAILURE)
 				return FAILURE;
-			}
-			if (!pdfa_write(word->area, start, itr - start)) { // TODO better way to handle errors?
-				free(word);
-				errno = ENOMEM;
-				LIBERRN();
-				return FAILURE;
-			}
-			*words = word;
-			words = &word->next;
+			// commit word to pg
+			doc_pg_commit_area(pg, word);
 		}
-		// check if eof
+
+		// check eof
 		else if (!*itr)
 			return SUCCESS;
+
+		// white space (or non-printable)
 		else {
 			itr++;
 			ENSURE1SF(buf, itr);
 		}
-	}
+
+	} // end of pg
+
+	// commit pg to doc
+	doc_commit_pg(doc, pg);
+
 	return SUCCESS;
 }
 
-// the paragraph will be assembled into the first arealist of words
-int assemblepg(struct arealist * words) {
-	
-	return SUCCESS;
-}
-
-int handlepg(struct buffer * buf, pdf_t * pdf, struct arealist * words) {
-	if (parsepg(&buf, words) == FAILURE)
-		return FAILURE;
-	assert(!words->area);
-	assert(words->next);
-	// assemble areas into paragraph, then push to pdf
-	if (assemblepg(words->next) == FAILURE)
-		return FAILURE;
-	assert(!words->area);
-	assert(words->next);
-	// the first arealist should always be unused
-	// the second, at this point, should contain the words
-	//  all squashed together in one paragraph
-	if (pdf_push(pdf, words->next) == FAILURE)
-		return FAILURE;
-
-}
-
-int clear_words(struct arealist * words) {
-	struct arealist * temp;
-	while (words) {
-		temp = words->next;
-		ZERO(words, sizeof(*words))
-		free(words);
-		words = temp;
-	}
-}
-
-Status compile(FILE * in, const Doc * doc) {
+Status compile(FILE * in, Doc * doc) {
 	#ifndef NDEBUG
 	// smaller size means detect problems faster
 	#define DEF_BUF_SIZE 4
@@ -244,17 +220,15 @@ Status compile(FILE * in, const Doc * doc) {
 		.line = buf.start,
 		.lineno = 1
 	};
-	Status ret = SUCCESS;
+	Status ret = FAILURE;
 	if (!buf.start) {
 		LIBERRN();
 		return FAILURE;
 	}
 	
 	// attempt to read the first bytes
-	if (try_read(&buf, 0, DEF_BUF_SIZE - 1) == FAILURE) {
-		ret = FAILURE;
+	if (try_read(&buf, 0, DEF_BUF_SIZE - 1) == FAILURE)
 		goto err;
-	}
 
 	// read and compile until eof or error
 	while (1) {
@@ -269,19 +243,15 @@ Status compile(FILE * in, const Doc * doc) {
 				if (feof(in))
 					goto break2;
 				// attempt to read more
-				if (read_more(&buf) == FAILURE) {
-					ret = FAILURE;
+				if (read_more(&buf) == FAILURE)
 					goto err;
-				}
 			}
 			
 			// if we hit a printable character,
 			//  compile what follows as a paragraph
 			else if (*itr > ' ') {
-				if (compile_pg(buf, doc) == FAILURE) {
-					ret = FAILURE;
+				if (compile_pg(buf, doc) == FAILURE)
 					goto err;
-				}
 			}
 		} // end of line
 
@@ -291,6 +261,7 @@ Status compile(FILE * in, const Doc * doc) {
 	} // end of file
 
 break2:
+	ret = SUCCESS;
 err:
 	free(buf.start);
 	return ret;
@@ -304,18 +275,16 @@ int main(int argc, char * argv[]) {
 
 	FILE * in = fopen(argv[1], "r"); // input file
 	char * docname = NULL; // output file name
-	int ret = EXIT_SUCCESS; // exit status
+	int ret = EXIT_FAILURE; // exit status
 
 	// check if opened succesfully
 	if (!in) {
 		LIBERR("Failed to open %s", argv[1]);
-		ret = EXIT_FAILURE;
 		goto err;
 	}
 	// remove input buffering
 	if (setvbuf(in, NULL, _IONBF, 0) == -1) {
 		LIBERR("setvbuf");
-		ret = EXIT_FAILURE;
 		goto err;
 	}
 	{ // calculate output file name
@@ -324,7 +293,6 @@ int main(int argc, char * argv[]) {
 		docname = malloc(len_nosuffix + strlen(doc_suffix));
 		if (!docname) {
 			LIBERR("Failed to parse file name.");
-			ret = EXIT_FAILURE;
 			goto err;
 		}
 		memcpy(docname, argv[1], len_nosuffix);
@@ -333,24 +301,24 @@ int main(int argc, char * argv[]) {
 	// ensure input and output files are different
 	if (strcmp(argv[1], docname) == 0) {
 		ERR("Input and output file must be different.");
-		ret = EXIT_FAILURE;
 		goto err;
 	}
 	// create output document
 	Doc * doc;
-	if (!(doc = doc_open(docname))) {
-		LIBERR("Failed to create file %s", pdfname);
-		ret = EXIT_FAILURE;
+	if (!(doc = doc_open(docname)))
 		goto err;
-	}
 	// compile input and write to document
-	if (compile(in, doc) == FAILURE)
-		ret = EXIT_FAILURE;
+	Status compile_status = compile(in, doc);
 	// close document
-	if (doc_close(doc) == FAILURE)
-		ret = EXIT_FAILURE;
+	if (doc_close(doc) == FAILURE || compile_status == FAILURE)
+		goto err;
+
+	ret = EXIT_SUCCESS;
 err:
 	free(pdfname);
-	fclose(in);
+	if (fclose(in) == EOF) {
+		LIBERR("Failed to close input file");
+		return EXIT_FAILURE;
+	}
 	return ret;
 }
