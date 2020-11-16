@@ -131,7 +131,7 @@ while (0)
 while(0)
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
-	Doc_pg * pg = doc_new_pg(doc);
+	Doc_pg * pg = doc_pg_new();
 	if (!pg)
 		return FAILURE;
 	char * itr = buf.line;
@@ -168,22 +168,16 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 		// word
 		else if (*itr > ' ') {
-			// make space for word
-			Doc_area * word = doc_new_area();
-			if (!word)
-				return FAILURE;
-			char * start = itr;
 			// find the last character
+			char * start = itr;
 			do {
 				itr++;
 				// if eof, this is the last word
 				ENSURE1DF(buf, itr, break);
 			} while (*itr > ' ');
-			// write word
-			if (doc_area_write(word, start, itr - start) == FAILURE)
+			// write word to pg
+			if (doc_pg_add_word(pg, start, itr - start) == FAILURE)
 				return FAILURE;
-			// commit word to pg
-			doc_pg_commit_area(pg, word);
 		}
 
 		// check eof
@@ -198,8 +192,8 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 	} // end of pg
 
-	// commit pg to doc
-	doc_commit_pg(doc, pg);
+	// push pg to doc
+	doc_push_pg(doc, pg);
 
 	return SUCCESS;
 }

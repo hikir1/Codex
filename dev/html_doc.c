@@ -1,11 +1,14 @@
 #include <stdio.h>
+#include <errno.h>
+#include <stdint.h>
+#include <string.h>
 
 #include "util.h"
 #include "doc.h"
 
 #define WRITE_ERR() ERR("Failed to write to file.")
 
-extern const char * const doc_suffix = "html"
+extern const char * const doc_suffix = ".html"
 
 struct area {
 	char text[];
@@ -23,7 +26,6 @@ struct pg {
 
 struct doc {
 	FILE * file;
-	struct pg * cur_pg;
 }
 
 struct doc * doc_open(const char * name) {
@@ -52,27 +54,22 @@ err:
 	return NULL;
 }
 
-struct pg * doc_new_pg(struct doc * doc) {
-	assert(doc);
-	assert(!doc->cur_pg);
-	
+struct pg * doc_pg_new() {
 	struct pg * pg = malloc(sizeof(struct pg));
 
 	if (!pg)
 		return NULL;
 	pg->areas = NULL;
 	pg->tail_ptr = &pg->areas;
-	doc->cur_pg = pg;
 	return pg;
 }
 
-Status doc_commit_pg(struct doc * doc, struct pg * pg) {
+Status doc_push_pg(struct doc * doc, struct pg * pg) {
 	assert(doc);
-	assert(pg);
+	assert(pg)
+	assert(pg->tail_ptr);
 	assert(doc->file);
-	assert(doc->cur_pg);
 	assert(!ferror(doc->file));
-	assert(pg == doc->pg); // for now
 
 	Status ret = FAILURE;
 
@@ -113,7 +110,6 @@ err:
 	// free pg
 	ZEROS(pg);
 	free(pg);
-	doc->cur_pg = NULL;
 
 	return ret;
 }
@@ -121,7 +117,6 @@ err:
 Status doc_close(struct doc * doc) {
 	assert(doc);
 	assert(doc->file);
-	assert(!doc->cur_pg);
 
 	Status ret = fclose(doc->file) == EOF? FAILURE: SUCCESS;
 
