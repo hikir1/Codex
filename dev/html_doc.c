@@ -8,25 +8,31 @@
 
 #define WRITE_ERR() ERR("Failed to write to file.")
 
-extern const char * const doc_suffix = ".html"
+const char * const doc_suffix = ".html";
+
+struct text_node {
+	struct text_node * next;
+	char text[];
+};
 
 struct area {
-	char text[];
-}
+	struct text_node * head;
+	struct text_node ** tail_ptr;
+};
+
+struct area_node {
+	struct area_node * next;
+	struct area * area;
+};
 
 struct area_list {
-	struct area_list * next;
-	struct area area;
-}
-
-struct pg {
-	struct area_list * areas;
-	struct area_list ** tail_ptr;
-}
+	struct area_node * head;
+	struct area_node ** tail_ptr;
+};
 
 struct doc {
 	FILE * file;
-}
+};
 
 struct doc * doc_open(const char * name) {
 	assert(name);
@@ -54,64 +60,29 @@ err:
 	return NULL;
 }
 
-struct pg * doc_pg_new() {
-	struct pg * pg = malloc(sizeof(struct pg));
-
-	if (!pg)
-		return NULL;
-	pg->areas = NULL;
-	pg->tail_ptr = &pg->areas;
-	return pg;
-}
-
-Status doc_push_pg(struct doc * doc, struct pg * pg) {
+Status doc_push(struct doc * doc, struct area * area) {
 	assert(doc);
-	assert(pg)
-	assert(pg->tail_ptr);
+	assert(area)
+	assert(area->tail_ptr);
 	assert(doc->file);
 	assert(!ferror(doc->file));
 
+	struct text_node * itr = area->head;
+	FILE * file = doc->file;
 	Status ret = FAILURE;
 
-	// start paragraph
-	if (fputs("<p>\n", doc->file) == EOF) {
-		WRITE_ERR();
-		goto err;
-	}
-
-	// print text of each area as separate words
-	struct area_list * area_itr = pg->areas;
-	while (area_itr) {
-		if (fputs(area_iter->area.text, doc->file) == EOF
-				|| fputc(' ', doc->file) == EOF) {
+	while (itr) {
+		if (fputs(itr->text, file) == FAILURE) {
 			WRITE_ERR();
 			goto err;
 		}
-		area_itr = area_itr->next;
-	}
-
-	if (fputs("\n<\\p>\n", doc->file) == EOF) {
-		WRITE_ERR();
-		goto err;
+		itr = itr->next;
 	}
 
 	ret = SUCCESS;
 
-err:	
-	// free areas separately so not interupted if print fails
-	area_itr = pg->areas;
-	pg->areas = NULL;
-	while (area_itr) {
-		struct area_list * next = area_itr->next;
-		ZEROS(area_itr);
-		free(area_itr);
-	}
-
-	// free pg
-	ZEROS(pg);
-	free(pg);
-
-	return ret;
+err:
+	return doc_area_free(area) == FAILURE? FAILURE: ret;
 }
 
 Status doc_close(struct doc * doc) {
@@ -126,8 +97,69 @@ Status doc_close(struct doc * doc) {
 	return ret;
 }
 
-// TODO: NOTE: when errno set to EOVERFLOW its bc user's word is too big
-//  An informative message must be printed by caller
+Status doc_area_free(struct area * area) {
+	assert(area);
+	assert(area->tail_ptr);
+
+	struct text_node * itr = area->head;
+	struct text_node * next;
+	while (itr) {
+		next = itr->next;
+		ZEROS(itr);
+		free(itr);
+		itr = next;
+	}
+	return SUCCESS;
+}
+
+struct area_list * doc_area_list_new() {
+	struct area_list * list = malloc(sizeof(struct area_list));
+	if (!list) {
+		LIBERRN();
+		return NULL;
+	}
+	list->head = NULL;
+	list->tail_ptr = &list->head;
+	return list;
+}
+
+Status doc_area_list_add(struct area_list * list, struct area * area) {
+	assert(list);
+	assert(area);
+	assert(list->tail_ptr);
+	assert(!*list->tail_ptr);
+	assert(area->tail_ptr);
+
+	struct area_node * node = malloc(sizeof(struct area_node));
+	if (!node) {
+		LIBERRN();
+		return FAILURE;
+	}
+	node->next = NULL;
+	node->area = area;
+	*list->tail_ptr = node;
+	list->tail_ptr = &node->next;
+
+	return SUCCESS;
+}
+
+Status doc_area_list_free(struct area_list * list) {
+	// TODO: asserts
+	struct area_node * itr = list->head;
+	struct area_node * next;
+	while (itr) {
+		next = itr->next;
+		ZEROS(itr);
+		free(itr);
+		itr = next;
+	}
+	return SUCCESS;
+}
+
+struct area * doc_text(const char * text, size_t len) {
+	assert(text);
+// TODO
+
 Status doc_pg_add_word(struct pg * pg, const char * word, size_t len) {
 	assert(pg);
 	assert(word);

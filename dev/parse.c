@@ -114,27 +114,27 @@ int read_more(struct buffer * buf) {
 
 #define ENSURE1DF(buf, itr, do_eof) do { \
 	size_t __idx = itr - buf->start; \
-	if (**(itr) == '\0') { \
+	if (*(itr) == '\0') { \
 		if (feof((buf)->in)) \
 			do_eof; \
 		else if (read_more(buf) == FAILURE) \
 			return FAILURE; \
 	} \
 	itr = buf->start + __idx; \
-while (0)
+} while (0)
 
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
 	(buf)->lineno++; \
-while(0)
+} while(0)
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
 	Doc_pg * pg = doc_pg_new();
 	if (!pg)
 		return FAILURE;
-	char * itr = buf.line;
+	char * itr = buf->line;
 
 	// build paragraph until double newline, eof, or error
 	while (1) {
@@ -226,7 +226,7 @@ Status compile(FILE * in, Doc * doc) {
 
 	// read and compile until eof or error
 	while (1) {
-		char * itr = buf->line;
+		char * itr = buf.line;
 
 		// process line by line
 		while (*itr != '\n') {
@@ -244,13 +244,13 @@ Status compile(FILE * in, Doc * doc) {
 			// if we hit a printable character,
 			//  compile what follows as a paragraph
 			else if (*itr > ' ') {
-				if (compile_pg(buf, doc) == FAILURE)
+				if (compile_pg(&buf, doc) == FAILURE)
 					goto err;
 			}
 		} // end of line
 
 		// update line count
-		buf->line++;
+		buf.line++;
 
 	} // end of file
 
@@ -309,7 +309,7 @@ int main(int argc, char * argv[]) {
 
 	ret = EXIT_SUCCESS;
 err:
-	free(pdfname);
+	free(docname);
 	if (fclose(in) == EOF) {
 		LIBERR("Failed to close input file");
 		return EXIT_FAILURE;
