@@ -6,28 +6,18 @@
 #include "util.h"
 #include "doc.h"
 
-#define WRITE_ERR() ERR("Failed to write to file.")
+#define WRITE_ERR() ERR("Failed to write to file")
+#define CLOSE_ERR() LIBERR("Failed to close output file")
 
 const char * const doc_suffix = ".html";
 
-struct text_node {
-	struct text_node * next;
-	char text[];
+struct area_ops {
+	Status (*write)(struct area * seld, FILE *);
+	Status (*free)(struct area * self);
 };
 
 struct area {
-	struct text_node * head;
-	struct text_node ** tail_ptr;
-};
-
-struct area_node {
-	struct area_node * next;
-	struct area * area;
-};
-
-struct area_list {
-	struct area_node * head;
-	struct area_node ** tail_ptr;
+	struct area_ops * ops;
 };
 
 struct doc {
@@ -35,7 +25,6 @@ struct doc {
 };
 
 struct doc * doc_open(const char * name) {
-	assert(name);
 	
 	FILE * file = fopen(name, "w");
 	if (!file) {
@@ -56,41 +45,32 @@ struct doc * doc_open(const char * name) {
 err:
 	free(doc);
 	if (fclose(file) == EOF)
-		LIBERR("Failed to close output file");
+		CLOSE_ERR();
 	return NULL;
 }
 
-Status doc_push(struct doc * doc, struct area * area) {
-	assert(doc);
-	assert(area)
-	assert(area->tail_ptr);
-	assert(doc->file);
-	assert(!ferror(doc->file));
+Status doc_add(struct doc * doc, struct area * area) {
 
-	struct text_node * itr = area->head;
-	FILE * file = doc->file;
+	return area->ops->write(area, doc->file);
+}
+
+Status doc_close(struct doc * doc) {
+	
 	Status ret = FAILURE;
 
-	while (itr) {
-		if (fputs(itr->text, file) == FAILURE) {
-			WRITE_ERR();
-			goto err;
-		}
-		itr = itr->next;
+	if (fputs("</body>\n</html>\n", doc->file) == EOF) {
+		WRITE_ERR();
+		goto err;
+	}
+
+	if (fclose(doc->file) == EOF) {
+		CLOSE_ERR();
+		goto err;
 	}
 
 	ret = SUCCESS;
 
 err:
-	return doc_area_free(area) == FAILURE? FAILURE: ret;
-}
-
-Status doc_close(struct doc * doc) {
-	assert(doc);
-	assert(doc->file);
-
-	Status ret = fclose(doc->file) == EOF? FAILURE: SUCCESS;
-
 	ZEROS(doc);
 	free(doc);
 
@@ -98,86 +78,252 @@ Status doc_close(struct doc * doc) {
 }
 
 Status doc_area_free(struct area * area) {
-	assert(area);
-	assert(area->tail_ptr);
 
-	struct text_node * itr = area->head;
-	struct text_node * next;
-	while (itr) {
-		next = itr->next;
-		ZEROS(itr);
-		free(itr);
-		itr = next;
-	}
-	return SUCCESS;
+	return area->ops->free(area);
 }
 
-struct area_list * doc_area_list_new() {
+/////////////////////////////////////
+// Area List
+/////////////////////////////////////
+
+struct area_list {
+	struct area_list * next;
+	struct area * area;
+};
+
+static inline Status area_list_free_first(struct area_list * itr) {
+	Status ret = itr->area->ops->free(itr->area);
+	ZERO(itr, sizeof(itr));
+	free(itr);
+	return ret;
+}
+
+static Status area_list_free_all(struct area_list * itr) {
+	Status ret = SUCCESS;
+	struct area_list * next;
+	while (itr) {
+		next = itr->next;
+		if (area_list_free_first(itr) == FAILURE)
+			ret = FAILURE;
+		itr = next;
+	}
+	return ret;
+}
+
+static struct area_list * area_list_new(struct area * area) {
 	struct area_list * list = malloc(sizeof(struct area_list));
 	if (!list) {
 		LIBERRN();
 		return NULL;
 	}
-	list->head = NULL;
-	list->tail_ptr = &list->head;
+	list->next = NULL;
+	list->area = area;
 	return list;
 }
 
-Status doc_area_list_add(struct area_list * list, struct area * area) {
-	assert(list);
-	assert(area);
-	assert(list->tail_ptr);
-	assert(!*list->tail_ptr);
-	assert(area->tail_ptr);
 
-	struct area_node * node = malloc(sizeof(struct area_node));
-	if (!node) {
-		LIBERRN();
-		return FAILURE;
-	}
-	node->next = NULL;
-	node->area = area;
-	*list->tail_ptr = node;
-	list->tail_ptr = &node->next;
+/////////////////////////////////////
+// Text List
+/////////////////////////////////////
 
-	return SUCCESS;
+struct text_list {
+	struct text_list * next;
+	char text[];
+};
+
+struct text_list_area {
+	struct area area;
+	struct text_list * head;
+	struct text_list ** tail_ptr;
+};
+
+static inline void text_list_free_first(struct text_list * itr) {
+	ZERO(itr, sizeof(struct text_list) + strlen(itr->text));
+	free(itr);
 }
 
-Status doc_area_list_free(struct area_list * list) {
-	// TODO: asserts
-	struct area_node * itr = list->head;
-	struct area_node * next;
+static void text_list_free_all(struct text_list * itr) {
+	struct text_list * next;
 	while (itr) {
 		next = itr->next;
-		ZEROS(itr);
-		free(itr);
+		text_list_free_first(itr);
 		itr = next;
 	}
-	return SUCCESS;
 }
 
-struct area * doc_text(const char * text, size_t len) {
-	assert(text);
-// TODO
-
-Status doc_pg_add_word(struct pg * pg, const char * word, size_t len) {
-	assert(pg);
-	assert(word);
-	assert(pg->tail_ptr);
-
-	if (len > SIZE_MAX - sizeof(struct area_list)) {
-		errno = EOVERFLOW;
-		return FAILURE;
+static inline struct text_list * text_list_new(const char * text, size_t len) {
+	if (len > SIZE_MAX - sizeof(struct text_list)) {
+		ERR("Token too big.");
+		return NULL;
 	}
-	struct area_list * area_node = malloc(len + sizeof(struct area_list));
-	if (!area_node) {
+	struct text_list * list = malloc(sizeof(struct text_list) + len);
+	if (!list) {
 		LIBERRN();
-		return FAILURE;
+		return NULL;
 	}
-	memcpy(area_node->area->text, word, len);
-	*pg->tail_ptr = area_node;
-	pg->tail_ptr = &area_node->next;
+	list->next = NULL;
+	memcpy(list->text, text, len);
+	return list;
+}
+
+
+/////////////////////////////////////
+// Text List Area
+/////////////////////////////////////
+
+static inline void text_list_area_free_just_self(struct text_list_area * list_area) {
+	ZEROS(list_area);
+	free(list_area);
+}
+
+static Status text_list_area_free(struct text_list_area * list_area) {
+	text_list_free_all(list_area->head);
+	text_list_area_free_just_self(list_area);
+	return SUCCESS;
+}
+
+static struct text_list_area * text_list_area_new(struct area_ops * ops) {
+	struct text_list_area * list_area = malloc(sizeof(struct text_list_area));
+	if (!list_area) {
+		LIBERRN();
+		return NULL;
+	}
+	list_area->area.ops = ops;
+	list_area->head = NULL;
+	list_area->tail_ptr = &list->head;
+	return list_area;
+}
+
+static inline Status text_list_area_add(struct text_list_area * list_area,
+		const char * text, size_t len) {
+	struct text_list * list = text_list_new(text, len);
+	if (!list)
+		return FAILURE;
+	*list_area->tail_ptr = list;
+	list_area->tail_ptr = &list->next;
+	return SUCCESS;
+}
+
+static text_list_area_write(struct text_list_area * list_area, FILE * file) {
+
+	struct text_list * itr = list_area->head;
+	struct text_list * next;
+	Status ret = SUCCESS;
+
+	while (itr) {
+		next = itr->next;
+		if (fputs(itr->text, file) == EOF
+				|| fputc(' ', file) == EOF) {
+			WRITE_ERR();
+			text_list_free_all(itr);
+			ret = FAILURE;
+			break;
+		}
+		text_list_free_first(itr);
+		itr = next;
+	}
+
+	text_list_area_free_just_self(list_area);
+
+	return ret;
+}
+
+const struct area_ops text_list_area_ops = {
+	.write = text_list_area_write,
+	.free = text_list_area_free,
+};
+
+
+////////////////////////////////////////////
+// PG Area
+////////////////////////////////////////////
+
+struct pg_area {
+	struct area area;
+	struct area_list * head;
+	struct area_list * tail;
+};
+
+Status pg_area_free(struct pg_area * pg) {
+	Status ret = area_list_free_all(pg->head);
+	ZERO(pg, sizeof(struct pg_area));
+	free(pg);
+	return ret;
+}
+
+// TODO: write op should not free
+// TODO: where freeing, NULL?
+
+Status pg_area_write(struct pg_area * pg, FILE * file) {
+	struct area_list * itr = pg->head;
+	struct area_list * next;
+
+	ZERO(pg, sizeof(struct pg));
+	free(pg);
+
+	if (fputs("<p>\n", file) == EOF) {
+		WRITE_ERR();
+		goto err;
+	}
+	while (itr) {
+		next = itr->next;
+		Status write_ret = itr->area->ops->write(itr->area, file);
+		itr->area = NULL; // guaranteed freed <<<<<<<<<<<<<<<<< could this cause problem with asserts?
+		if (write_ret == FAILURE)
+			goto err;
+		if (fputc(' ', file) == EOF) {
+			WRITE_ERR();
+			goto err;
+		}
+		if (area_list_free_first(itr) == FAILURE)
+			goto err;
+		itr = next;
+	}
+	if (fputs("\n</p>\n", file) == EOF) {
+		WRITE_ERR();
+		goto err;
+	}
 
 	return SUCCESS;
 
+err:
+	area_list_free_all(itr);
+	return FAILURE;
 }
+
+const struct area_ops pg_area_ops = {
+	.write = pg_area_write,
+	.free = pg_area_free,
+}
+
+struct pg_area * doc_area_pg_new() {
+	struct pg_area * pg = malloc(sizeof(struct pg_area));
+	if (!pg) {
+		LIBERRN();
+		return NULL;
+	}
+	pg->area.ops = pg_area_ops;
+	pg->head = NULL;
+	pg->tail = NULL;
+	return pg;
+}
+
+Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) {
+	if (!pg->tail || pg->tail->ops != text_list_area_ops) {
+		struct text_list_area * list_area = text_list_area_new();
+		if (!list_area)
+			return FAILURE;
+		if (!pg->tail) {
+			pg->head = list_area;
+			pg->tail = list_area;
+		}
+		else {
+			pg->tail->next = list_area;
+			pg->tail = list_area;
+		}
+	}
+	if (text_list_area_add(pg->tail, word, len) == FAILURE)
+		return FAILURE;
+	return SUCCESS;
+}
+
