@@ -379,11 +379,11 @@ static struct str_list_area * str_list_area_new(struct area_ops * ops) {
  *
  * RETURNS: Status
  */
-static inline Status text_list_area_add(struct text_list_area * list_area,
-		const char * text, size_t len) {
+static inline Status str_list_area_add(struct str_list_area * list_area,
+		const char * str, size_t len) {
 
 	// create a new list node with the given string
-	struct text_list * list = text_list_new(text, len);
+	struct str_list * list = str_list_new(str, len);
 	if (!list)
 		return FAILURE;
 
@@ -399,6 +399,15 @@ static inline Status text_list_area_add(struct text_list_area * list_area,
 // PG Area
 ////////////////////////////////////////////
 
+/**
+ * An `area` which forms a paragraph out of given words
+ * and other areas.
+ *
+ * @area - the `area` parent struct
+ * @head - the first element of the list containing all
+ * 	the `area`s in the paragraph
+ * @tail - the last element in the list
+ */
 struct pg_area {
 	struct area area;
 	struct area_list * head;
@@ -406,31 +415,43 @@ struct pg_area {
 };
 
 static Status pg_area_free(struct pg_area * pg) {
+
+	// free the contained list
 	Status ret = area_list_free_all(pg->head);
+
+	// free the pg
 	ZERO(pg, sizeof(struct pg_area));
 	free(pg);
+
 	return ret;
 }
 
 static Status pg_area_write(struct pg_area * pg, FILE * file) {
 	struct area_list * itr = pg->head;
 
+	// start the pg
 	if (fputs("<p>\n", file) == EOF) {
 		WRITE_ERR();
 		return FAILURE;
 	}
+	// for each element in the pg
 	while (itr) {
+
+		// write the element
 		Status write_ret = itr->area->ops->write(itr->area, file);
 		if (write_ret == FAILURE)
 			return FAILURE;
+
+		// follow with a space
 		if (fputc(' ', file) == EOF) {
 			WRITE_ERR();
 			return FAILURE;
 		}
-		if (area_list_free_first(itr) == FAILURE)
-			return FAILURE;
+
 		itr = itr->next;
 	}
+
+	// end the pg
 	if (fputs("\n</p>\n", file) == EOF) {
 		WRITE_ERR();
 		return FAILURE;
@@ -445,33 +466,48 @@ const struct area_ops pg_area_ops = {
 }
 
 struct pg_area * doc_area_pg_new() {
+
+	// create the pg
 	struct pg_area * pg = malloc(sizeof(struct pg_area));
 	if (!pg) {
 		LIBERRN();
 		return NULL;
 	}
+
+	// initialize
 	pg->area.ops = pg_area_ops;
 	pg->head = NULL;
 	pg->tail = NULL;
+
 	return pg;
 }
 
 Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) {
+
+	// check if last element not a text list area
 	if (!pg->tail || pg->tail->ops != text_list_area_ops) {
+
+		// create a new text list area
 		struct text_list_area * list_area = text_list_area_new(text_list_area_default_ops);
 		if (!list_area)
 			return FAILURE;
+
+		// if pg is empty, set as head and tail
 		if (!pg->tail) {
 			pg->head = list_area;
 			pg->tail = list_area;
 		}
+		// else, add to end of list
 		else {
 			pg->tail->next = list_area;
 			pg->tail = list_area;
 		}
 	}
+
+	// copy the word to the terminating text list area
 	if (text_list_area_add(pg->tail, word, len) == FAILURE)
 		return FAILURE;
+
 	return SUCCESS;
 }
 
