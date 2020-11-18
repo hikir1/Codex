@@ -50,35 +50,31 @@ err:
 }
 
 Status doc_add(struct doc * doc, struct area * area) {
-
-	return area->ops->write(area, doc->file);
+	Status write_ret = area->ops->write(area, doc->file);
+	return area->ops->free(area) == FAILURE? FAILURE: write_ret;
 }
 
 Status doc_close(struct doc * doc) {
 	
-	Status ret = FAILURE;
+	Status ret = SUCCESS;
 
 	if (fputs("</body>\n</html>\n", doc->file) == EOF) {
 		WRITE_ERR();
-		goto err;
+		ret = FAILURE;
 	}
 
 	if (fclose(doc->file) == EOF) {
 		CLOSE_ERR();
-		goto err;
+		ret = FAILURE;
 	}
 
-	ret = SUCCESS;
-
-err:
-	ZEROS(doc);
+	ZERO(doc, sizeof(struct doc));
 	free(doc);
 
 	return ret;
 }
 
 Status doc_area_free(struct area * area) {
-
 	return area->ops->free(area);
 }
 
@@ -91,20 +87,18 @@ struct area_list {
 	struct area * area;
 };
 
-static inline Status area_list_free_first(struct area_list * itr) {
-	Status ret = itr->area->ops->free(itr->area);
-	ZERO(itr, sizeof(itr));
-	free(itr);
-	return ret;
-}
-
 static Status area_list_free_all(struct area_list * itr) {
 	Status ret = SUCCESS;
 	struct area_list * next;
+
 	while (itr) {
 		next = itr->next;
-		if (area_list_free_first(itr) == FAILURE)
+
+		if (itr->area->ops->free(itr->area) == FAILURE)
 			ret = FAILURE;
+		ZERO(itr, sizeof(struct area_list));
+		free(itr);
+
 		itr = next;
 	}
 	return ret;
@@ -137,16 +131,14 @@ struct text_list_area {
 	struct text_list ** tail_ptr;
 };
 
-static inline void text_list_free_first(struct text_list * itr) {
-	ZERO(itr, sizeof(struct text_list) + strlen(itr->text));
-	free(itr);
-}
-
 static void text_list_free_all(struct text_list * itr) {
 	struct text_list * next;
 	while (itr) {
 		next = itr->next;
-		text_list_free_first(itr);
+
+		ZERO(itr, sizeof(struct text_list) + strlen(itr->text));
+		free(itr);
+
 		itr = next;
 	}
 }
@@ -171,14 +163,10 @@ static inline struct text_list * text_list_new(const char * text, size_t len) {
 // Text List Area
 /////////////////////////////////////
 
-static inline void text_list_area_free_just_self(struct text_list_area * list_area) {
-	ZEROS(list_area);
-	free(list_area);
-}
-
 static Status text_list_area_free(struct text_list_area * list_area) {
 	text_list_free_all(list_area->head);
-	text_list_area_free_just_self(list_area);
+	ZERO(list_area, sizeof(struct text_list_area);
+	free(list_area);
 	return SUCCESS;
 }
 
@@ -207,28 +195,20 @@ static inline Status text_list_area_add(struct text_list_area * list_area,
 static text_list_area_write(struct text_list_area * list_area, FILE * file) {
 
 	struct text_list * itr = list_area->head;
-	struct text_list * next;
-	Status ret = SUCCESS;
 
 	while (itr) {
-		next = itr->next;
 		if (fputs(itr->text, file) == EOF
 				|| fputc(' ', file) == EOF) {
 			WRITE_ERR();
-			text_list_free_all(itr);
-			ret = FAILURE;
-			break;
+			return FAILURE;
 		}
-		text_list_free_first(itr);
-		itr = next;
+		itr = itr->next;
 	}
 
-	text_list_area_free_just_self(list_area);
-
-	return ret;
+	return SUCCESS;
 }
 
-const struct area_ops text_list_area_ops = {
+const struct area_ops text_list_area_default_ops = {
 	.write = text_list_area_write,
 	.free = text_list_area_free,
 };
@@ -251,44 +231,31 @@ Status pg_area_free(struct pg_area * pg) {
 	return ret;
 }
 
-// TODO: write op should not free
-// TODO: where freeing, NULL?
-
 Status pg_area_write(struct pg_area * pg, FILE * file) {
 	struct area_list * itr = pg->head;
-	struct area_list * next;
-
-	ZERO(pg, sizeof(struct pg));
-	free(pg);
 
 	if (fputs("<p>\n", file) == EOF) {
 		WRITE_ERR();
-		goto err;
+		return FAILURE;
 	}
 	while (itr) {
-		next = itr->next;
 		Status write_ret = itr->area->ops->write(itr->area, file);
-		itr->area = NULL; // guaranteed freed <<<<<<<<<<<<<<<<< could this cause problem with asserts?
 		if (write_ret == FAILURE)
-			goto err;
+			return FAILURE;
 		if (fputc(' ', file) == EOF) {
 			WRITE_ERR();
-			goto err;
+			return FAILURE;
 		}
 		if (area_list_free_first(itr) == FAILURE)
-			goto err;
-		itr = next;
+			return FAILURE;
+		itr = itr->next;
 	}
 	if (fputs("\n</p>\n", file) == EOF) {
 		WRITE_ERR();
-		goto err;
+		return FAILURE;
 	}
 
 	return SUCCESS;
-
-err:
-	area_list_free_all(itr);
-	return FAILURE;
 }
 
 const struct area_ops pg_area_ops = {
@@ -310,7 +277,7 @@ struct pg_area * doc_area_pg_new() {
 
 Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) {
 	if (!pg->tail || pg->tail->ops != text_list_area_ops) {
-		struct text_list_area * list_area = text_list_area_new();
+		struct text_list_area * list_area = text_list_area_new(text_list_area_default_ops);
 		if (!list_area)
 			return FAILURE;
 		if (!pg->tail) {
