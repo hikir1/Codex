@@ -4,7 +4,8 @@
 #include <assert.h>
 #include "util.h"
 
-	typedef void Doc, Doc_area;
+	typedef struct doc Doc;
+	typedef struct doc_area Doc_area;
 
 	extern const char * const doc_suffix;
 

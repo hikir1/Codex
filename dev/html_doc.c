@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
 #include "util.h"
 #include "doc.h"
@@ -41,6 +42,12 @@ struct area_ops {
 	Status (*free)(struct area * self);
 };
 
+#define ASSERT_AREA_OPS(ops) do { \
+	assert(ops); \
+	assert(ops->write); \
+	assert(ops->free); \
+} while(0)
+
 /**
  * The abstract `Doc_area` representation.
  * This is the parent struct of all `Doc_area`s,
@@ -55,6 +62,11 @@ struct area {
 	struct area_ops * ops;
 };
 
+#define ASSERT_AREA(area) do { \
+	assert(area); \
+	ASSERT_AREA_OPS(area->ops); \
+} while (0)
+
 /**
  * The `Doc` representation.
  *
@@ -65,7 +77,18 @@ struct doc {
 	FILE * file;
 };
 
+#define ASSERT_FILE(file) do { \
+	assert(file); \
+	assert(!ferror(file)); \
+} while(0)
+
+#define ASSERT_DOC(doc) do { \
+	assert(doc); \
+	ASSERT_FILE(doc->file); \
+} while(0)
+
 struct doc * doc_open(const char * name) {
+	assert(name);
 	
 	// open file
 	FILE * file = fopen(name, "w");
@@ -100,6 +123,8 @@ err:
 }
 
 Status doc_add(struct doc * doc, struct area * area) {
+	ASSERT_DOC(doc);
+	ASSERT_AREA(area);
 
 	// write, then free
 	Status write_ret = area->ops->write(area, doc->file);
@@ -107,6 +132,8 @@ Status doc_add(struct doc * doc, struct area * area) {
 }
 
 Status doc_close(struct doc * doc) {
+	assert(doc);
+	assert(doc->file);
 	
 	Status ret = SUCCESS;
 
@@ -130,6 +157,8 @@ Status doc_close(struct doc * doc) {
 }
 
 Status doc_area_free(struct area * area) {
+	ASSERT_AREA(area);
+
 	return area->ops->free(area);
 }
 
@@ -151,6 +180,11 @@ struct area_list {
 	struct area * area;
 };
 
+#define ASSERT_AREA_LIST(list) do { \
+	assert(list); \
+	assert(list->area); \
+} while(0)
+
 /**
  * recursively frees the entire list, starting from `head`
  *
@@ -166,6 +200,9 @@ static Status area_list_free_all(struct area_list * head) {
 
 	// go through each node
 	while (itr) {
+		ASSERT_AREA_LIST(itr);
+		ASSERT_AREA(itr->area);
+
 		next = itr->next;
 
 		// attempt to free the current elemnt
@@ -192,6 +229,8 @@ static Status area_list_free_all(struct area_list * head) {
  *
  */
 static struct area_list * area_list_new(struct area * area) {
+	ASSERT_AREA(area);
+
 	struct area_list * list = malloc(sizeof(struct area_list));
 	if (!list) {
 		LIBERRN();
@@ -219,6 +258,8 @@ struct str_list {
 	char str[];
 };
 
+#define ASSERT_STR_LIST(list) assert(list)
+
 /**
  * recursively frees the entire list, starting from `head`
  *
@@ -232,6 +273,8 @@ static void str_list_free_all(struct str_list * head) {
 
 	// go through each node
 	while (itr) {
+		ASSERT_STR_LIST(itr);
+
 		next = itr->next;
 
 		// free the current node
@@ -253,15 +296,16 @@ static void str_list_free_all(struct str_list * head) {
  *
  */
 static inline struct str_list * str_list_new(const char * str, size_t len) {
+	assert(str);
 	
 	// Prevent overflow
-	if (len > SIZE_MAX - sizeof(struct str_list)) {
+	if (len > SIZE_MAX - 1 - sizeof(struct str_list)) {
 		ERR("Token too big.");
 		return NULL;
 	}
 
 	// create the list
-	struct str_list * list = malloc(sizeof(struct str_list) + len);
+	struct str_list * list = malloc(sizeof(struct str_list) + len + 1);
 	if (!list) {
 		LIBERRN();
 		return NULL;
@@ -270,6 +314,7 @@ static inline struct str_list * str_list_new(const char * str, size_t len) {
 	// intialize
 	list->next = NULL;
 	memcpy(list->text, text, len);
+	list->text[len] = 0;
 
 	return list;
 }
@@ -294,7 +339,13 @@ struct str_list_area {
 	struct str_list ** tail_ptr;
 };
 
+#define ASSERT_STR_LIST_AREA(list_area) do { \
+	ASSERT_AREA((struct area *)list_area); \
+	assert(list_area->tail_ptr); \
+} while(0)
+
 static Status str_list_area_free(struct str_list_area * list_area) {
+	ASSERT_STR_LIST_AREA(list_area);
 
 	// free the contained str_list
 	str_list_free_all(list_area->head);
@@ -315,6 +366,8 @@ static Status str_list_area_free(struct str_list_area * list_area) {
  * should be supplied to the constructor (`str_list_area_new()`).
  */
 static Status str_list_area_default_write(struct str_list_area * list_area, FILE * file) {
+	ASSERT_STR_LIST_AREA(list_area);
+	ASSERT_FILE(file);
 
 	struct text_list * itr = list_area->head;
 
@@ -355,6 +408,7 @@ const struct area_ops str_list_area_default_ops = {
  * 	the `area` on success, NULL on failure
  */
 static struct str_list_area * str_list_area_new(struct area_ops * ops) {
+	ASSERT_AREA_OPS(ops);
 
 	// create the list area
 	struct str_list_area * list_area = malloc(sizeof(struct str_list_area));
@@ -381,6 +435,8 @@ static struct str_list_area * str_list_area_new(struct area_ops * ops) {
  */
 static inline Status str_list_area_add(struct str_list_area * list_area,
 		const char * str, size_t len) {
+	ASSERT_STR_LIST_AREA(list_area);
+	assert(str);
 
 	// create a new list node with the given string
 	struct str_list * list = str_list_new(str, len);
@@ -414,7 +470,13 @@ struct pg_area {
 	struct area_list * tail;
 };
 
+#define ASSERT_PG_AREA(pg) do { \
+	ASSERT_AREA((struct area *)pg); \
+	assert(!head && !tail || head && tail); \
+} while (0)
+
 static Status pg_area_free(struct pg_area * pg) {
+	ASSERT_PG_AREA(pg);
 
 	// free the contained list
 	Status ret = area_list_free_all(pg->head);
@@ -427,6 +489,9 @@ static Status pg_area_free(struct pg_area * pg) {
 }
 
 static Status pg_area_write(struct pg_area * pg, FILE * file) {
+	ASSERT_PG_AREA(pg);
+	ASSERT_FILE(file);
+
 	struct area_list * itr = pg->head;
 
 	// start the pg
@@ -483,12 +548,14 @@ struct pg_area * doc_area_pg_new() {
 }
 
 Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) {
+	ASSERT_PG_AREA(pg);
+	assert(word);
 
 	// check if last element not a text list area
-	if (!pg->tail || pg->tail->ops != text_list_area_ops) {
+	if (!pg->tail || pg->tail->ops != str_list_area_ops) {
 
 		// create a new text list area
-		struct text_list_area * list_area = text_list_area_new(text_list_area_default_ops);
+		struct str_list_area * list_area = str_list_area_new(str_list_area_default_ops);
 		if (!list_area)
 			return FAILURE;
 
@@ -505,7 +572,7 @@ Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) 
 	}
 
 	// copy the word to the terminating text list area
-	if (text_list_area_add(pg->tail, word, len) == FAILURE)
+	if (str_list_area_add(pg->tail, word, len) == FAILURE)
 		return FAILURE;
 
 	return SUCCESS;
