@@ -1,5 +1,5 @@
-#ifndef _UTIL_H
-#define _UTIL_H
+#ifndef UTIL_H
+#define UTIL_H
 
 #define ERR_PREFIX "ERROR: "
 #define ERR(msg, ...) fprintf(stderr, ERR_PREFIX msg "\n", ##__VA_ARGS__)
@@ -20,4 +20,4 @@ typedef int Status;
 #define SUCCESS 0
 #define FAILURE 1
 
-#endif
+#endif // UTIL_H

@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
@@ -11,6 +12,9 @@
 #define CLOSE_ERR() LIBERR("Failed to close output file")
 
 const char * const doc_suffix = ".html";
+
+typedef Status (*Vft_write)(struct doc_area *, FILE *);
+typedef Status (*Vft_free)(struct doc_area *);
 
 /**
  * A VFT of operations that the associated `area` can perform
@@ -29,7 +33,7 @@ struct area_ops {
 	 * RETURNS: Status
 	 *
 	 */
-	Status (*write)(struct area * self, FILE * file);
+	Vft_write write;
 
  	/**
 	 * prepares the `area` and its contents to be released, then frees it
@@ -39,7 +43,7 @@ struct area_ops {
 	 * RETURNS: Status
 	 *
 	 */
-	Status (*free)(struct area * self);
+	Vft_free free;
 };
 
 #define ASSERT_AREA_OPS(ops) do { \
@@ -58,13 +62,13 @@ struct area_ops {
  * 	an an `area` without knowing its exact type (Polymorphism).
  *
  */
-struct area {
-	struct area_ops * ops;
+struct doc_area {
+	const struct area_ops * ops;
 };
 
 #define ASSERT_AREA(area) do { \
-	assert(area); \
-	ASSERT_AREA_OPS(area->ops); \
+	assert((struct doc_area *)(area)); \
+	ASSERT_AREA_OPS(((struct doc_area *)(area))->ops); \
 } while (0)
 
 /**
@@ -122,7 +126,7 @@ err:
 	return NULL;
 }
 
-Status doc_add(struct doc * doc, struct area * area) {
+Status doc_add(struct doc * doc, struct doc_area * area) {
 	ASSERT_DOC(doc);
 	ASSERT_AREA(area);
 
@@ -156,12 +160,6 @@ Status doc_close(struct doc * doc) {
 	return ret;
 }
 
-Status doc_area_free(struct area * area) {
-	ASSERT_AREA(area);
-
-	return area->ops->free(area);
-}
-
 /////////////////////////////////////
 // Area List
 /////////////////////////////////////
@@ -177,7 +175,7 @@ Status doc_area_free(struct area * area) {
  */
 struct area_list {
 	struct area_list * next;
-	struct area * area;
+	struct doc_area * area;
 };
 
 #define ASSERT_AREA_LIST(list) do { \
@@ -228,7 +226,7 @@ static Status area_list_free_all(struct area_list * head) {
  * 	the new node on success, NULL on failure
  *
  */
-static struct area_list * area_list_new(struct area * area) {
+static struct area_list * area_list_new(struct doc_area * area) {
 	ASSERT_AREA(area);
 
 	struct area_list * list = malloc(sizeof(struct area_list));
@@ -278,7 +276,7 @@ static void str_list_free_all(struct str_list * head) {
 		next = itr->next;
 
 		// free the current node
-		ZERO(itr, sizeof(struct str_list) + strlen(itr->text));
+		ZERO(itr, sizeof(struct str_list) + strlen(itr->str));
 		free(itr);
 
 		itr = next;
@@ -313,8 +311,8 @@ static inline struct str_list * str_list_new(const char * str, size_t len) {
 
 	// intialize
 	list->next = NULL;
-	memcpy(list->text, text, len);
-	list->text[len] = 0;
+	memcpy(list->str, str, len);
+	list->str[len] = 0;
 
 	return list;
 }
@@ -333,49 +331,49 @@ static inline struct str_list * str_list_new(const char * str, size_t len) {
  * @tail_ptr - a pointer to the next available space
  * 	at the end of the list
  */
-struct str_list_area {
-	struct area area;
+struct doc_area_str_list {
+	struct doc_area area;
 	struct str_list * head;
 	struct str_list ** tail_ptr;
 };
 
 #define ASSERT_STR_LIST_AREA(list_area) do { \
-	ASSERT_AREA((struct area *)list_area); \
+	ASSERT_AREA((struct doc_area *)list_area); \
 	assert(list_area->tail_ptr); \
 } while(0)
 
-static Status str_list_area_free(struct str_list_area * list_area) {
+static Status doc_area_str_list_free(struct doc_area_str_list * list_area) {
 	ASSERT_STR_LIST_AREA(list_area);
 
 	// free the contained str_list
 	str_list_free_all(list_area->head);
 
 	// free the list area
-	ZERO(list_area, sizeof(struct str_list_area);
+	ZERO(list_area, sizeof(struct doc_area_str_list));
 	free(list_area);
 
 	return SUCCESS;
 }
 
 /**
- * The deafult function for writing a `str_list_area`.
+ * The deafult function for writing a `doc_area_str_list`.
  * Writes all the strings in the contained list, each followed by a space.
  *
  * If this implementation is not sufficient for a given purpose,
  * then a set of operations containing a different `write` function
- * should be supplied to the constructor (`str_list_area_new()`).
+ * should be supplied to the constructor (`doc_area_str_list_new()`).
  */
-static Status str_list_area_default_write(struct str_list_area * list_area, FILE * file) {
+static Status doc_area_str_list_default_write(struct doc_area_str_list * list_area, FILE * file) {
 	ASSERT_STR_LIST_AREA(list_area);
 	ASSERT_FILE(file);
 
-	struct text_list * itr = list_area->head;
+	struct str_list * itr = list_area->head;
 
 	// go through each element
 	while (itr) {
 
 		// print the element, followed by a space
-		if (fputs(itr->text, file) == EOF
+		if (fputs(itr->str, file) == EOF
 				|| fputc(' ', file) == EOF) {
 			WRITE_ERR();
 			return FAILURE;
@@ -388,18 +386,18 @@ static Status str_list_area_default_write(struct str_list_area * list_area, FILE
 }
 
 /**
- * The default set of operations for `str_list_area`.
+ * The default set of operations for `doc_area_str_list`.
  * If these implementations are insufficient, a diferent set
  * may be provided to the constructor.
  */
-const struct area_ops str_list_area_default_ops = {
-	.write = str_list_area_default_write,
-	.free = str_list_area_free,
+const struct area_ops doc_area_str_list_default_ops = {
+	.write = (Vft_write) doc_area_str_list_default_write,
+	.free = (Vft_free) doc_area_str_list_free,
 };
 
 /**
- * Creates a new `str_list_area` with VFT operations `ops`.
- * If the `str_list_area_default_ops` are insufficient for any reason,
+ * Creates a new `doc_area_str_list` with VFT operations `ops`.
+ * If the `doc_area_str_list_default_ops` are insufficient for any reason,
  * a different set of operations may be provided.
  *
  * @ops - the VFT operations for this `area`
@@ -407,11 +405,11 @@ const struct area_ops str_list_area_default_ops = {
  * RETURNS
  * 	the `area` on success, NULL on failure
  */
-static struct str_list_area * str_list_area_new(struct area_ops * ops) {
+static struct doc_area_str_list * doc_area_str_list_new(const struct area_ops * ops) {
 	ASSERT_AREA_OPS(ops);
 
 	// create the list area
-	struct str_list_area * list_area = malloc(sizeof(struct str_list_area));
+	struct doc_area_str_list * list_area = malloc(sizeof(struct doc_area_str_list));
 	if (!list_area) {
 		LIBERRN();
 		return NULL;
@@ -420,7 +418,7 @@ static struct str_list_area * str_list_area_new(struct area_ops * ops) {
 	// initialize
 	list_area->area.ops = ops;
 	list_area->head = NULL;
-	list_area->tail_ptr = &list->head;
+	list_area->tail_ptr = &list_area->head;
 
 	return list_area;
 }
@@ -433,7 +431,7 @@ static struct str_list_area * str_list_area_new(struct area_ops * ops) {
  *
  * RETURNS: Status
  */
-static inline Status str_list_area_add(struct str_list_area * list_area,
+static inline Status doc_area_str_list_add(struct doc_area_str_list * list_area,
 		const char * str, size_t len) {
 	ASSERT_STR_LIST_AREA(list_area);
 	assert(str);
@@ -464,31 +462,31 @@ static inline Status str_list_area_add(struct str_list_area * list_area,
  * 	the `area`s in the paragraph
  * @tail - the last element in the list
  */
-struct pg_area {
-	struct area area;
+struct doc_area_pg {
+	struct doc_area area;
 	struct area_list * head;
 	struct area_list * tail;
 };
 
 #define ASSERT_PG_AREA(pg) do { \
-	ASSERT_AREA((struct area *)pg); \
-	assert(!head && !tail || head && tail); \
+	ASSERT_AREA(pg); \
+	assert(!pg->head && !pg->tail || pg->head && pg->tail); \
 } while (0)
 
-static Status pg_area_free(struct pg_area * pg) {
+Status doc_area_pg_free(struct doc_area_pg * pg) {
 	ASSERT_PG_AREA(pg);
 
 	// free the contained list
 	Status ret = area_list_free_all(pg->head);
 
 	// free the pg
-	ZERO(pg, sizeof(struct pg_area));
+	ZERO(pg, sizeof(struct doc_area_pg));
 	free(pg);
 
 	return ret;
 }
 
-static Status pg_area_write(struct pg_area * pg, FILE * file) {
+static Status doc_area_pg_write(struct doc_area_pg * pg, FILE * file) {
 	ASSERT_PG_AREA(pg);
 	ASSERT_FILE(file);
 
@@ -525,54 +523,63 @@ static Status pg_area_write(struct pg_area * pg, FILE * file) {
 	return SUCCESS;
 }
 
-const struct area_ops pg_area_ops = {
-	.write = pg_area_write,
-	.free = pg_area_free,
-}
+const struct area_ops doc_area_pg_ops = {
+	.write = (Vft_write) doc_area_pg_write,
+	.free = (Vft_free) doc_area_pg_free,
+};
 
-struct pg_area * doc_area_pg_new() {
+struct doc_area_pg * doc_area_pg_new() {
 
 	// create the pg
-	struct pg_area * pg = malloc(sizeof(struct pg_area));
+	struct doc_area_pg * pg = malloc(sizeof(struct doc_area_pg));
 	if (!pg) {
 		LIBERRN();
 		return NULL;
 	}
 
 	// initialize
-	pg->area.ops = pg_area_ops;
+	pg->area.ops = &doc_area_pg_ops;
 	pg->head = NULL;
 	pg->tail = NULL;
 
 	return pg;
 }
 
-Status doc_area_pg_add_word(struct pg_area * pg, const char * word, size_t len) {
+Status doc_area_pg_add_word(struct doc_area_pg * pg, const char * word, size_t len) {
 	ASSERT_PG_AREA(pg);
 	assert(word);
+	if (pg->tail) {
+		ASSERT_AREA_LIST(pg->tail);
+		ASSERT_AREA(pg->tail->area);
+	}
 
 	// check if last element not a text list area
-	if (!pg->tail || pg->tail->ops != str_list_area_ops) {
+	if (!pg->tail || pg->tail->area->ops != &doc_area_str_list_default_ops) {
 
 		// create a new text list area
-		struct str_list_area * list_area = str_list_area_new(str_list_area_default_ops);
-		if (!list_area)
+		struct doc_area * area = (struct doc_area *) doc_area_str_list_new(&doc_area_str_list_default_ops);
+		if (!area)
+			return FAILURE;
+
+		// put it in a node
+		struct area_list * node = area_list_new(area);
+		if (!node)
 			return FAILURE;
 
 		// if pg is empty, set as head and tail
 		if (!pg->tail) {
-			pg->head = list_area;
-			pg->tail = list_area;
+			pg->head = node;
+			pg->tail = node;
 		}
 		// else, add to end of list
 		else {
-			pg->tail->next = list_area;
-			pg->tail = list_area;
+			pg->tail->next = node;
+			pg->tail = node;
 		}
 	}
 
 	// copy the word to the terminating text list area
-	if (str_list_area_add(pg->tail, word, len) == FAILURE)
+	if (doc_area_str_list_add((struct doc_area_str_list *)pg->tail->area, word, len) == FAILURE)
 		return FAILURE;
 
 	return SUCCESS;

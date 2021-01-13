@@ -48,7 +48,7 @@ void showctx(struct buffer * buf, char * pos) {
 	Attempts to read from input file
 	@buf buffer to read to
 	@idx the index from which to start copying data
-	@amt amount of data to read
+	@amt amount of data to read, discluding null byte
 	@in the input file
 */
 int try_read(struct buffer * buf, size_t idx, size_t amt) {
@@ -60,7 +60,7 @@ int try_read(struct buffer * buf, size_t idx, size_t amt) {
 	assert(!feof(buf->in));
 
 	char * readstart = buf->start + idx;
-	size_t amtread = fread(readstart, 1, amt, buf->in);
+	size_t amtread = fread(readstart, sizeof(char), amt, buf->in);
 	readstart[amtread] = '\0';
 	if (amtread != amt && ferror(buf->in)) {
 		ERR("Failed to read from input file");
@@ -93,7 +93,8 @@ int read_more(struct buffer * buf) {
 			SYNERR(buf, buf->line, "This line is too big");
 			return FAILURE;
 		}
-		size_t newcap = buf->cap << 1;
+		size_t oldcap = buf->cap;
+		size_t newcap = oldcap << 1;
 		char * newstart = realloc(buf->start, newcap);
 		if (!newstart) {
 			LIBERRN();
@@ -101,29 +102,33 @@ int read_more(struct buffer * buf) {
 		}
 		buf->start = newstart;
 		buf->line = newstart;
-		int ret = try_read(buf, buf->cap - 1, buf->cap);
+		buf->cap = newcap;
+		int ret = try_read(buf, oldcap - 1, oldcap);
 		buf->cap = newcap;
 		return ret;
 	}
-	size_t remaining = buf->cap - amtparsed; // includes null
+	size_t remaining = buf->cap - amtparsed - 1; // discludes null
 	memmove(buf->start, buf->line, remaining);
 	buf->line = buf->start;
 	// all the bytes that have been parsed are now free space
 	return try_read(buf, remaining, amtparsed);
 }
 
-#define ENSURE1DF(buf, itr, do_eof) do { \
-	size_t __idx = itr - buf->start; \
+#define ENSURE1DDF(buf, itr, do_eof, do_nul) do { \
+	size_t _idx = (itr) - (buf)->start; \
 	if (*(itr) == '\0') { \
 		if (feof((buf)->in)) \
 			do_eof; \
 		else if (read_more(buf) == FAILURE) \
 			return FAILURE; \
+		do_nul; \
 	} \
-	itr = buf->start + __idx; \
+	itr = (buf)->start + _idx; \
 } while (0)
 
+#define ENSURE1DF(buf, itr, do_eof) ENSURE1DDF(buf, itr, do_eof, (void))
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
+#define ENSURE1BF(buf, itr) ENSURE1DF(buf, itr, break)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
@@ -131,69 +136,70 @@ int read_more(struct buffer * buf) {
 } while(0)
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
-	Doc_pg * pg = doc_pg_new();
+	Doc_area_pg * pg = doc_area_pg_new();
 	if (!pg)
 		return FAILURE;
 	char * itr = buf->line;
 
 	// build paragraph until double newline, eof, or error
-	while (1) {
+	while (*itr) {
 
 		// newline
 		if (*itr == '\n') {
+puts("NEWLINE");
 			itr++;
-			ENSURE1SF(buf, itr);
 			NEXTLINE(buf, itr);
+			ENSURE1BF(buf, itr);
 			// second newline = end of pragraph
-			if (*itr == '\n') {
-				NEXTLINE(buf, itr+1);
-				return SUCCESS;
-			}
+			if (*itr == '\n')
+				break;
 		}
 
 		// pound
 		else if (*itr == '#') {
+puts("POUND");
 			itr++;
-			ENSURE1SF(buf, itr);
+			ENSURE1BF(buf, itr);
 			// second pound = line comment
 			if (*itr == '#') {
 				do {
 					itr++;
-					ENSURE1SF(buf, itr);
+					ENSURE1BF(buf, itr);
 				} while (*itr != '\n');
-				itr++;
-				NEXTLINE(buf, itr);
 			}
 		}
 
+		// white space (or non-printable)
+		else if (*itr == ' ') {
+puts("SPACE");
+			itr++;
+			ENSURE1BF(buf, itr);
+		}
+
 		// word
-		else if (*itr > ' ') {
+		else {
 			// find the last character
 			char * start = itr;
 			do {
 				itr++;
 				// if eof, this is the last word
-				ENSURE1DF(buf, itr, break);
-			} while (*itr > ' ');
+				ENSURE1BF(buf, itr); ///////////////// <<<<<<<<<<<<<<<<<< `start` not updated
+			} while (*itr != ' ');
+
 			// write word to pg
-			if (doc_pg_add_word(pg, start, itr - start) == FAILURE)
+			if (doc_area_pg_add_word(pg, start, itr - start) == FAILURE)
 				return FAILURE;
-		}
-
-		// check eof
-		else if (!*itr)
-			return SUCCESS;
-
-		// white space (or non-printable)
-		else {
-			itr++;
-			ENSURE1SF(buf, itr);
+printf("START: %s\n", start);
 		}
 
 	} // end of pg
 
-	// push pg to doc
-	doc_push_pg(doc, pg);
+end:
+
+	NEXTLINE(buf, itr);
+
+	// add pg to doc
+	doc_add(doc, (Doc_area *) pg);
 
 	return SUCCESS;
 }
