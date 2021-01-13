@@ -114,21 +114,29 @@ int read_more(struct buffer * buf) {
 	return try_read(buf, remaining, amtparsed);
 }
 
-#define ENSURE1DDF(buf, itr, do_eof, do_nul) do { \
-	size_t _idx = (itr) - (buf)->start; \
+void update_buf_refs(size_t shift, int nrefs, ...) {
+	va_list refs;
+	va_start(refs, nrefs);
+	while (nrefs-- > 0)
+		*va_arg(refs, char **) += shift;
+	va_end(refs);
+}
+
+#define ENSURE1DFRefs(buf, itr, do_eof, nrefs, ...) do { \
 	if (*(itr) == '\0') { \
+		char * _old_start = (buf)->start; \
 		if (feof((buf)->in)) \
 			do_eof; \
 		else if (read_more(buf) == FAILURE) \
 			return FAILURE; \
-		do_nul; \
+		update_buf_refs((buf)->start - _old_start, nrefs + 1, &(itr), __VA_ARGS__); \
 	} \
-	itr = (buf)->start + _idx; \
 } while (0)
 
-#define ENSURE1DF(buf, itr, do_eof) ENSURE1DDF(buf, itr, do_eof, (void))
+#define ENSURE1DF(buf, itr, do_eof) ENSURE1DFRefs(buf, itr, do_eof, 0)
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
 #define ENSURE1BF(buf, itr) ENSURE1DF(buf, itr, break)
+#define ENSURE1BFRefs(buf, itr, nrefs, ...) ENSURE1DFRefs(buf, itr, break, nrefs, __VA_ARGS__)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
@@ -179,7 +187,7 @@ puts("SPACE");
 		// word
 		else {
 			// find the last character
-			char * start = itr;
+			char * start = itr; // <<<<<<<<<<<<<< just change this
 			do {
 				itr++;
 				// if eof, this is the last word
