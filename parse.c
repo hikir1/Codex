@@ -95,7 +95,8 @@ int read_more(struct buffer * buf) {
 		}
 		size_t oldcap = buf->cap;
 		size_t newcap = oldcap << 1;
-		char * newstart = realloc(buf->start, newcap);
+		char * newstart;
+		REALLOC(buf->start, newstart, oldcap, oldcap, newcap);
 		if (!newstart) {
 			LIBERRN();
 			return FAILURE;
@@ -114,29 +115,20 @@ int read_more(struct buffer * buf) {
 	return try_read(buf, remaining, amtparsed);
 }
 
-void update_buf_refs(size_t shift, int nrefs, ...) {
-	va_list refs;
-	va_start(refs, nrefs);
-	while (nrefs-- > 0)
-		*va_arg(refs, char **) += shift;
-	va_end(refs);
-}
-
-#define ENSURE1DFRefs(buf, itr, do_eof, nrefs, ...) do { \
+#define ENSURE1DD(buf, itr, do_eof, do_err) do { \
 	if (*(itr) == '\0') { \
-		char * _old_start = (buf)->start; \
+		char * _old_line = (buf)->line; \
 		if (feof((buf)->in)) \
 			do_eof; \
 		else if (read_more(buf) == FAILURE) \
-			return FAILURE; \
-		update_buf_refs((buf)->start - _old_start, nrefs + 1, &(itr), __VA_ARGS__); \
+			do_err; \
+		(itr) += (buf)->line - _old_line; \
 	} \
 } while (0)
 
-#define ENSURE1DF(buf, itr, do_eof) ENSURE1DFRefs(buf, itr, do_eof, 0)
+#define ENSURE1DF(buf, itr, do_eof) ENSURE1DD(buf, itr, do_eof, return FAILURE)
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
 #define ENSURE1BF(buf, itr) ENSURE1DF(buf, itr, break)
-#define ENSURE1BFRefs(buf, itr, nrefs, ...) ENSURE1DFRefs(buf, itr, break, nrefs, __VA_ARGS__)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
@@ -187,17 +179,18 @@ puts("SPACE");
 		// word
 		else {
 			// find the last character
-			char * start = itr; // <<<<<<<<<<<<<< just change this
+			size_t startidx = itr - buf->line; // <<<<<<<<<<<<<< just change this
 			do {
 				itr++;
 				// if eof, this is the last word
 				ENSURE1BF(buf, itr); ///////////////// <<<<<<<<<<<<<<<<<< `start` not updated
-			} while (*itr != ' ');
+			} while (*itr > ' ');
+			size_t endidx = itr - buf->line;
 
 			// write word to pg
-			if (doc_area_pg_add_word(pg, start, itr - start) == FAILURE)
+			if (doc_area_pg_add_word(pg, buf->line + startidx, endidx - startidx) == FAILURE)
 				return FAILURE;
-printf("START: %s\n", start);
+printf("START: %s\n", buf->start + startidx);
 		}
 
 	} // end of pg
@@ -245,21 +238,16 @@ Status compile(FILE * in, Doc * doc) {
 		// process line by line
 		while (*itr != '\n') {
 
-			// check if end of buffer
-			if (*itr == '\0') {
-				// check if eof
-				if (feof(in))
-					goto break2;
-				// attempt to read more
-				if (read_more(&buf) == FAILURE)
-					goto err;
-			}
+			// ensure there is another character
+			ENSURE1DD(&buf, itr, goto break2, goto err);
 			
 			// if we hit a printable character,
 			//  compile what follows as a paragraph
-			else if (*itr > ' ') {
+			if (*itr > ' ') {
 				if (compile_pg(&buf, doc) == FAILURE)
 					goto err;
+				// buffer is shifted now
+				itr = buf.line;
 			}
 		} // end of line
 
