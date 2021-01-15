@@ -13,9 +13,11 @@
 	Status doc_add(Doc *, Doc_area *);
 	Status doc_close(Doc *);
 
+	typedef struct doc_area_text Doc_area_text;
+	Status doc_area_text_add_word(Doc_area_text *, const char * word, size_t len);
+
 	typedef struct doc_area_pg Doc_area_pg;
 	Doc_area_pg * doc_area_pg_new();
-	Status doc_area_pg_add_word(Doc_area_pg *, const char * word, size_t len);
 	Status doc_area_pg_free(Doc_area_pg *);
 
 #endif // DOC_H
