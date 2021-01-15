@@ -200,7 +200,7 @@ end:
 	NEXTLINE(buf, itr);
 
 	// add pg to doc
-	doc_add(doc, (Doc_area *) pg);
+	doc_add_pg(doc, pg);
 
 	return SUCCESS;
 }

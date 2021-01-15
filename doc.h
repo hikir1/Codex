@@ -8,7 +8,7 @@
 
 	#define DOC_AREA(TYPE) \
 	DOC_AREA_TYPE(TYPE) \
-	inline Status doc_add_ ## TYPE (Doc * doc, Doc_area_ ## TYPE * area) { \
+	static inline Status doc_add_ ## TYPE (Doc * doc, Doc_area_ ## TYPE * area) { \
 		return doc_add(doc, (Doc_area *) area); \
 	} \
 	Status doc_area_ ## TYPE ## _free(Doc_area_ ## TYPE * area);
@@ -18,7 +18,7 @@
 	Doc_area_ ## TYPE * doc_area_ ## TYPE ## _new(void);
 
 	#define TEXT_AREA(TYPE) \
-	inline Status doc_area_ ## TYPE ## _add_word(Doc_area_ ## TYPE * area, const char * word, size_t len) { \
+	static inline Status doc_area_ ## TYPE ## _add_word(Doc_area_ ## TYPE * area, const char * word, size_t len) { \
 		return doc_area_text_add_word((Doc_area_text *) area, word, len); \
 	}
 	
@@ -37,5 +37,8 @@
 
 	DOC_AREA_C(pg)
 	TEXT_AREA(pg)
+
+	#undef DOC_AREA
+	#undef TEXT_AREA
 
 #endif // DOC_H

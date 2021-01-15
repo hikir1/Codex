@@ -479,7 +479,7 @@ static Status doc_area_text_free(struct doc_area_text * tx) {
 	Status ret = area_list_free_all(tx->head);
 
 	// free the `area`
-	ZERO(tx, sizeof(struct doc_area_tx));
+	ZERO(tx, sizeof(struct doc_area_text));
 	free(tx);
 
 	return ret;
@@ -526,7 +526,7 @@ static Status doc_area_text_write(struct doc_area_text * tx, FILE * file,
 static struct doc_area_text * doc_area_text_new(const struct area_ops * ops) {
 
 	// create the `area`
-	struct doc_area_text * tx = malloc(sizeof(struct doc_area_tx));
+	struct doc_area_text * tx = malloc(sizeof(struct doc_area_text));
 	if (!tx) {
 		LIBERRN();
 		return NULL;
@@ -537,10 +537,10 @@ static struct doc_area_text * doc_area_text_new(const struct area_ops * ops) {
 	tx->head = NULL;
 	tx->tail = NULL;
 
-	return pg;
+	return tx;
 }
 
-static Status doc_area_text_add_word(struct doc_area_text * tx, const char * word, size_t len) {
+Status doc_area_text_add_word(struct doc_area_text * tx, const char * word, size_t len) {
 	ASSERT_TEXT_AREA(tx);
 	assert(word);
 	if (tx->tail) {
