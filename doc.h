@@ -21,6 +21,10 @@
 	static inline Status doc_area_ ## TYPE ## _add_word(Doc_area_ ## TYPE * area, const char * word, size_t len) { \
 		return doc_area_text_add_word((Doc_area_text *) area, word, len); \
 	}
+
+	#define DOC_TEXT_AREA(TYPE) \
+	DOC_AREA_C(TYPE) \
+	TEXT_AREA(TYPE)
 	
 
 	typedef struct doc Doc;
@@ -35,10 +39,15 @@
 	DOC_AREA_TYPE(text)
 	Status doc_area_text_add_word(Doc_area_text *, const char * word, size_t len);
 
-	DOC_AREA_C(pg)
-	TEXT_AREA(pg)
+	DOC_TEXT_AREA(pg)
+	DOC_TEXT_AREA(bold)
+	DOC_TEXT_AREA(it)
+	DOC_TEXT_AREA(under)
+	DOC_TEXT_AREA(strike)
+
 
 	#undef DOC_AREA
 	#undef TEXT_AREA
+	#undef DOC_TEXT_AREA
 
 #endif // DOC_H

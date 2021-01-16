@@ -135,10 +135,13 @@ int read_more(struct buffer * buf) {
 	(buf)->lineno++; \
 } while(0)
 
+#define IDX(itr, buf) ((itr) - (buf)->line)
+
 Status compile_pg(struct buffer * buf, Doc * doc) {
 	Doc_area_pg * pg = doc_area_pg_new();
 	if (!pg)
 		return FAILURE;
+	size_t startidx = 0;
 	char * itr = buf->line;
 
 	// build paragraph until double newline, eof, or error
@@ -148,6 +151,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (*itr == '\n') {
 			PTEST("NEWLINE");
 			itr++;
+			startidx++;
 			NEXTLINE(buf, itr);
 			ENSURE1BF(buf, itr);
 			// second newline = end of pragraph
@@ -166,6 +170,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 					itr++;
 					ENSURE1BF(buf, itr);
 				} while (*itr != '\n');
+				startidx = IDX(itr, buf);
 			}
 		}
 
@@ -173,24 +178,32 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		else if (*itr == ' ') {
 			PTEST("SPACE");
 			itr++;
+			startidx++;
 			ENSURE1BF(buf, itr);
+		}
+
+		// star
+		else if (*itr == *) {
+			PTEST("STAR");
+			itr++;
+			// TODO
 		}
 
 		// word
 		else {
 			// find the last character
-			size_t startidx = itr - buf->line; // <<<<<<<<<<<<<< just change this
 			do {
 				itr++;
 				// if eof, this is the last word
 				ENSURE1BF(buf, itr); ///////////////// <<<<<<<<<<<<<<<<<< `start` not updated
 			} while (*itr > ' ');
-			size_t endidx = itr - buf->line;
+			size_t endidx = IDX(buf, itr);
 
 			// write word to pg
 			if (doc_area_pg_add_word(pg, buf->line + startidx, endidx - startidx) == FAILURE)
 				return FAILURE;
 			PTEST("START: %s", buf->start + startidx);
+			startidx = endidx + 1;
 		}
 
 	} // end of pg

@@ -580,38 +580,26 @@ Status doc_area_text_add_word(struct doc_area_text * tx, const char * word, size
 	return SUCCESS;
 }
 
-////////////////////////////////////////////
-// PG Area
-////////////////////////////////////////////
-
-/**
- * An `area` which forms a paragraph. It is
- * subtype of Text Area.
- *
- * @text - the parent type, a Text Area
- */
-struct doc_area_pg {
-	struct doc_area_text text;
-};
-
-#define ASSERT_PG_AREA(pg) do { \
-	ASSERT_AREA(pg); \
-	assert(!pg->head && !pg->tail || pg->head && pg->tail); \
-} while (0)
-
-Status doc_area_pg_free(struct doc_area_pg * pg) {
-	return doc_area_text_free((struct doc_area_text *) pg);
+#define TEXT_AREA(TYPE, SYM) \
+struct doc_area_ ## TYPE { \
+	struct doc_area_text text; \
+}; \
+Status doc_area_ ## TYPE ## _free(struct doc_area_ ## TYPE * area) { \
+	return doc_area_text_free((struct doc_area_text *) area); \
+} \
+static inline Status doc_area_ ## TYPE ## _write(struct doc_area_ ## TYPE * area, FILE * file) { \
+	return doc_area_text_write((struct doc_area_text *) area, file, "<" #SYM ">\n", "\n</" #SYM ">\n"); \
+} \
+const struct area_ops doc_area_ ## TYPE ## _ops = { \
+	.write = (Vft_write) doc_area_ ## TYPE ## _write, \
+	.free = (Vft_free) doc_area_ ## TYPE ## _free, \
+}; \
+struct doc_area_ ## TYPE * doc_area_ ## TYPE ## _new() { \
+	return (struct doc_area_ ## TYPE *) doc_area_text_new(&doc_area_ ## TYPE ## _ops); \
 }
 
-static inline Status doc_area_pg_write(struct doc_area_pg * pg, FILE * file) {
-	return doc_area_text_write((struct doc_area_text *) pg, file, "<p>\n", "\n</p>\n");
-}
-
-const struct area_ops doc_area_pg_ops = {
-	.write = (Vft_write) doc_area_pg_write,
-	.free = (Vft_free) doc_area_pg_free,
-};
-
-struct doc_area_pg * doc_area_pg_new() {
-	return (struct doc_area_pg *) doc_area_text_new(&doc_area_pg_ops);
-}
+TEXT_AREA(pg, p)
+TEXT_AREA(bold, b)
+TEXT_AREA(it, em)
+TEXT_AREA(under, u)
+TEXT_AREA(strike, strike)
