@@ -36,7 +36,14 @@
 #ifndef NDEBUG
 #define ZERO(ptr, size) memset(ptr, 0, size)
 #else
-#define ZERO(ptr, size) (void)
+#define ZERO(ptr, size)
+#endif
+
+#ifdef PTEST
+#undef PTEST
+#define PTEST(STR, ...) fprintf(stderr, STR "\n", ##__VA_ARGS__)
+#else
+#define PTEST(STR, ...)
 #endif
 
 typedef int Status;

@@ -146,7 +146,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 		// newline
 		if (*itr == '\n') {
-puts("NEWLINE");
+			PTEST("NEWLINE");
 			itr++;
 			NEXTLINE(buf, itr);
 			ENSURE1BF(buf, itr);
@@ -157,7 +157,7 @@ puts("NEWLINE");
 
 		// pound
 		else if (*itr == '#') {
-puts("POUND");
+			PTEST("POUND");
 			itr++;
 			ENSURE1BF(buf, itr);
 			// second pound = line comment
@@ -171,7 +171,7 @@ puts("POUND");
 
 		// white space (or non-printable)
 		else if (*itr == ' ') {
-puts("SPACE");
+			PTEST("SPACE");
 			itr++;
 			ENSURE1BF(buf, itr);
 		}
@@ -190,7 +190,7 @@ puts("SPACE");
 			// write word to pg
 			if (doc_area_pg_add_word(pg, buf->line + startidx, endidx - startidx) == FAILURE)
 				return FAILURE;
-printf("START: %s\n", buf->start + startidx);
+			PTEST("START: %s", buf->start + startidx);
 		}
 
 	} // end of pg
