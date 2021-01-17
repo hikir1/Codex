@@ -128,7 +128,7 @@ int read_more(struct buffer * buf) {
 
 #define ENSURE1DF(buf, itr, do_eof) ENSURE1DD(buf, itr, do_eof, return FAILURE)
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
-#define ENSURE1BF(buf, itr) ENSURE1DF(buf, itr, break)
+#define ENSURE1BE(buf, itr) ENSURE1DD(buf, itr, break, goto err)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
@@ -153,25 +153,27 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			itr++;
 			startidx = 0;
 			NEXTLINE(buf, itr);
-			ENSURE1BF(buf, itr);
+			ENSURE1BE(buf, itr);
 			// second newline = end of paragraph
 			if (*itr == '\n')
 				break;
+			continue;
 		}
 
 		// pound
 		else if (*itr == '#') {
 			PTEST("POUND");
 			itr++;
-			ENSURE1BF(buf, itr);
+			ENSURE1BE(buf, itr);
 			// second pound = line comment
 			if (*itr == '#') {
 				do {
 					itr++;
-					ENSURE1BF(buf, itr);
+					ENSURE1BE(buf, itr);
 				} while (*itr != '\n');
 				startidx = IDX(itr, buf);
 			}
+			continue;
 		}
 
 		// white space (or non-printable)
@@ -179,31 +181,36 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			PTEST("SPACE");
 			itr++;
 			startidx++;
-			ENSURE1BF(buf, itr);
+			ENSURE1BE(buf, itr);
+			continue;
 		}
 
 		// under
 		else if (*itr == '_') {
 			PTEST("UNDER");
 			itr++;
-			// TODO
+			if (*itr == '_') {
+				itr++;
+				startidx += 2;
+				if (doc_area_list_u_begin(p) == FAILURE) {
+					doc_area_list_free(p);
+					return FAILURE;
+				}
+			}
+			continue;
 		}
-
-		// word
-		else {
+		{ // else word
 			// find the last character
 			do {
 				itr++;
 				// if eof, this is the last word
-				ENSURE1BF(buf, itr);
+				ENSURE1BE(buf, itr);
 			} while (*itr > ' ');
 			size_t endidx = IDX(itr, buf);
 
 			// write word to pg
-			if (doc_area_list_add_word(p, buf->line + startidx, endidx - startidx) == FAILURE) {
-				doc_area_list_free(p);
-				return FAILURE;
-			}
+			if (doc_area_list_add_word(p, buf->line + startidx, endidx - startidx) == FAILURE)
+				goto err;
 			PTEST("START: %s", buf->start + startidx);
 			startidx = endidx;
 		}
@@ -214,6 +221,10 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 	// add pg to doc
 	return doc_add_p(doc, p);
+
+err:
+	doc_area_list_free(p);
+	return FAILURE;
 }
 
 Status compile(FILE * in, Doc * doc) {
@@ -276,7 +287,7 @@ err:
 
 int main(int argc, char * argv[]) {
 	if (argc != 2) {
-		fprintf(stderr, "Usage: %s <FILE>\n", argv[0]);
+		fprintf(stderr, "Usage: %s <file>\n", argv[0]);
 		return EXIT_FAILURE;
 	}
 
