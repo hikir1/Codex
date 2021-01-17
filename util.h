@@ -15,6 +15,8 @@
 	showctx(buf, pos); \
 }while(0)
 
+#define SSTRLEN(sstr) (sizeof(sstr) - 1)
+
 #ifndef NDEBUG
 // Fill old buffer with A's, hopefully causing an error or showing up in db
 // if dangling pointer exists

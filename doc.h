@@ -4,50 +4,19 @@
 #include <assert.h>
 #include "util.h"
 
-	#define DOC_AREA_TYPE(TYPE) typedef struct doc_area_ ## TYPE Doc_area_ ## TYPE;
-
-	#define DOC_AREA(TYPE) \
-	DOC_AREA_TYPE(TYPE) \
-	static inline Status doc_add_ ## TYPE (Doc * doc, Doc_area_ ## TYPE * area) { \
-		return doc_add(doc, (Doc_area *) area); \
-	} \
-	Status doc_area_ ## TYPE ## _free(Doc_area_ ## TYPE * area);
-
-	#define DOC_AREA_C(TYPE) \
-	DOC_AREA(TYPE) \
-	Doc_area_ ## TYPE * doc_area_ ## TYPE ## _new(void);
-
-	#define TEXT_AREA(TYPE) \
-	static inline Status doc_area_ ## TYPE ## _add_word(Doc_area_ ## TYPE * area, const char * word, size_t len) { \
-		return doc_area_text_add_word((Doc_area_text *) area, word, len); \
-	}
-
-	#define DOC_TEXT_AREA(TYPE) \
-	DOC_AREA_C(TYPE) \
-	TEXT_AREA(TYPE)
-	
-
 	typedef struct doc Doc;
-	typedef struct doc_area Doc_area;
+	typedef struct doc_area_list Doc_area_list;
 
 	extern const char * const doc_suffix;
 
 	Doc * doc_open(const char * name);
-	Status doc_add(Doc *, Doc_area *);
+	Status doc_add_p(Doc *, Doc_area_list *);
 	Status doc_close(Doc *);
 
-	DOC_AREA_TYPE(text)
-	Status doc_area_text_add_word(Doc_area_text *, const char * word, size_t len);
-
-	DOC_TEXT_AREA(pg)
-	DOC_TEXT_AREA(bold)
-	DOC_TEXT_AREA(it)
-	DOC_TEXT_AREA(under)
-	DOC_TEXT_AREA(strike)
-
-
-	#undef DOC_AREA
-	#undef TEXT_AREA
-	#undef DOC_TEXT_AREA
+	Doc_area_list * doc_area_list_new(void);
+	Status doc_area_list_add_word(Doc_area_list *, const char * word, size_t len);
+	Status doc_area_list_u_begin(Doc_area_list *);
+	Status doc_area_list_u_end(Doc_area_list *);
+	Status doc_area_list_free(Doc_area_list *);
 
 #endif // DOC_H

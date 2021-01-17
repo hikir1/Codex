@@ -138,8 +138,8 @@ int read_more(struct buffer * buf) {
 #define IDX(itr, buf) ((itr) - (buf)->line)
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
-	Doc_area_pg * pg = doc_area_pg_new();
-	if (!pg)
+	Doc_area_list * p = doc_area_list_new();
+	if (!p)
 		return FAILURE;
 	size_t startidx = 0;
 	char * itr = buf->line;
@@ -151,10 +151,10 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (*itr == '\n') {
 			PTEST("NEWLINE");
 			itr++;
-			startidx++;
+			startidx = 0;
 			NEXTLINE(buf, itr);
 			ENSURE1BF(buf, itr);
-			// second newline = end of pragraph
+			// second newline = end of paragraph
 			if (*itr == '\n')
 				break;
 		}
@@ -182,9 +182,9 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			ENSURE1BF(buf, itr);
 		}
 
-		// star
-		else if (*itr == *) {
-			PTEST("STAR");
+		// under
+		else if (*itr == '_') {
+			PTEST("UNDER");
 			itr++;
 			// TODO
 		}
@@ -195,27 +195,25 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			do {
 				itr++;
 				// if eof, this is the last word
-				ENSURE1BF(buf, itr); ///////////////// <<<<<<<<<<<<<<<<<< `start` not updated
+				ENSURE1BF(buf, itr);
 			} while (*itr > ' ');
-			size_t endidx = IDX(buf, itr);
+			size_t endidx = IDX(itr, buf);
 
 			// write word to pg
-			if (doc_area_pg_add_word(pg, buf->line + startidx, endidx - startidx) == FAILURE)
+			if (doc_area_list_add_word(p, buf->line + startidx, endidx - startidx) == FAILURE) {
+				doc_area_list_free(p);
 				return FAILURE;
+			}
 			PTEST("START: %s", buf->start + startidx);
-			startidx = endidx + 1;
+			startidx = endidx;
 		}
 
 	} // end of pg
 
-end:
-
 	NEXTLINE(buf, itr);
 
 	// add pg to doc
-	doc_add_pg(doc, pg);
-
-	return SUCCESS;
+	return doc_add_p(doc, p);
 }
 
 Status compile(FILE * in, Doc * doc) {
