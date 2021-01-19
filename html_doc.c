@@ -97,8 +97,7 @@ Status doc_add_p(struct doc * doc, struct doc_area_list * list) {
 
 	struct area_list_node * node = &list->head;
 	while (node) {
-		if (fputs(node->frag, doc->file) == EOF
-				|| putc(' ', doc->file) == EOF) {
+		if (fputs(node->frag, doc->file) == EOF) {
 			WRITE_ERR();
 			return FAILURE;
 		}
@@ -173,11 +172,11 @@ Status doc_area_list_add_word(struct doc_area_list * list, const char * word, si
 	ASSERT_DAL(list);
 
 	size_t idx = list->idx;
-	#define MAXWORDLEN DALFRAGLEN - 2 // (2 for spc & nul)
+	#define MAXWORDLEN DALFRAGLEN - 1 // (1 nul)
 	size_t rem = MAXWORDLEN - idx;
 	struct area_list_node * node = list->tailp;
 	char * ptr = node->frag + idx;
-	while (len > rem) {
+	while (len + 1 > rem) {
 		memcpy(ptr, word, rem);
 		ptr[rem] = '\0';
 		

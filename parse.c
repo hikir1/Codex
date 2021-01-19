@@ -128,7 +128,7 @@ int read_more(struct buffer * buf) {
 
 #define ENSURE1DF(buf, itr, do_eof) ENSURE1DD(buf, itr, do_eof, return FAILURE)
 #define ENSURE1SF(buf, itr) ENSURE1DF(buf, itr, return SUCCESS)
-#define ENSURE1BE(buf, itr) ENSURE1DD(buf, itr, break, goto err)
+#define ENSURE1BE(buf, itr) ENSURE1DD(buf, itr, goto end, goto err)
 
 #define NEXTLINE(buf, itr) do { \
 	(buf)->line = (itr); \
@@ -144,8 +144,10 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 	size_t startidx = 0;
 	char * itr = buf->line;
 
+	ENSURE1DD(buf, itr, return SUCCESS, goto err);
+
 	// build paragraph until double newline, eof, or error
-	while (*itr) {
+	while (1) {
 
 		// newline
 		if (*itr == '\n') {
@@ -189,33 +191,42 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		else if (*itr == '_') {
 			PTEST("UNDER");
 			itr++;
+			ENSURE1BE(buf, itr);
 			if (*itr == '_') {
 				itr++;
 				startidx += 2;
-				if (doc_area_list_u_begin(p) == FAILURE) {
-					doc_area_list_free(p);
-					return FAILURE;
-				}
+				if (doc_area_list_u_begin(p) == FAILURE)
+					goto err;
+				ENSURE1BE(buf, itr);
 			}
 			continue;
 		}
-		{ // else word
-			// find the last character
-			do {
-				itr++;
-				// if eof, this is the last word
-				ENSURE1BE(buf, itr);
-			} while (*itr > ' ');
-			size_t endidx = IDX(itr, buf);
 
-			// write word to pg
-			if (doc_area_list_add_word(p, buf->line + startidx, endidx - startidx) == FAILURE)
-				goto err;
-			PTEST("START: %s", buf->start + startidx);
-			startidx = endidx;
+		// else word
+		// find the last character
+		itr++;
+		ENSURE1BE(buf, itr);
+		while (*itr > ' ') {
+			// if eof, this is the last word
+			
+			itr++;
+			ENSURE1BE(buf, itr);
 		}
+		size_t endidx = IDX(itr, buf);
+
+		// write word to pg
+		if (doc_area_list_add_word(p, buf->line + startidx, endidx - startidx) == FAILURE)
+			goto err;
+		PTEST("START: %s", buf->start + startidx);
+		startidx = endidx;
+
+		// eof
+		if (!*itr)
+			break;
 
 	} // end of pg
+
+end:
 
 	NEXTLINE(buf, itr);
 
