@@ -286,7 +286,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			char * old_line = buf->line; 
 			READMORE_EOF_ERR(buf, break, goto err)
 			size_t shift = buf->line - old_line;
-			itr += shift;
+			itr += shift - 1;
 			wordstart += shift;
 			continue;
 		} 
@@ -370,7 +370,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		}
 
 		// else word
-		PTEST("WORD: %s", wordstart);
+		PTEST("WORD: %s", (itr - 1));
 		parsing_word = true;
 		wordend = NULL;
 		prevc = 0;
@@ -448,7 +448,7 @@ Status compile(FILE * in, Doc * doc) {
 		if (!c) {
 			char * prev_line = buf.line;
 			READMORE_EOF_ERR(&buf, break, goto err)
-			itr += buf.line - prev_line;
+			itr += buf.line - prev_line - 1;
 			continue;
 		}
 
