@@ -1,2 +1,0 @@
-maybe should just use separate structure for words, and just pass it to the right handler later
-would make titles easier
