@@ -18,7 +18,7 @@ struct buffer {
 	size_t lineno;
 };
 
-void showctx(struct buffer * buf, char * pos) {
+void showctx(const struct buffer * buf, const char * pos) {
 	assert(buf);
 	assert(pos);
 	assert(buf->line);
@@ -116,7 +116,7 @@ int read_more(struct buffer * buf) {
 	return try_read(buf, remaining, amtparsed);
 }
 
-inline void update_line(struct buf * buf, char * itr) {
+static inline void update_line(struct buffer * buf, char * itr) {
 	buf->line = itr;
 	buf->lineno++;
 }
@@ -135,6 +135,12 @@ struct span_stack {
 	assert(stack->len <= stack->cap); \
 	assert(stack->vals); \
 } while (0)
+
+#ifndef NDEBUG
+#define DEF_SPAN_STACK_CAP 1
+#else
+#define DEF_SPAN_STACK_CAP 8
+#endif
 
 Status span_stack_init(struct span_stack * stack) {
 	_Static_assert(DEF_SPAN_STACK_CAP <= SIZE_MAX / sizeof(enum span), "default span stack cap too big");
@@ -160,11 +166,11 @@ void span_stack_clean(struct span_stack * stack) {
 	stack->len = 1;
 }
 
-Status span_stack_grow(struct span_stack * stack, const struct buf * buf, const char * itr) {
+Status span_stack_grow(struct span_stack * stack, const struct buffer * buf, const char * itr) {
 	ASSERT_SPAN_STACK(stack);
 
 	if (stack->cap > SIZE_MAX / sizeof(enum span) / 2) {
-		SYN_ERR(buf, itr, "Too many nested spans");
+		SYNERR(buf, itr, "Too many nested spans");
 		return FAILURE;
 	}
 	stack->cap <<= 1;
@@ -177,45 +183,45 @@ Status span_stack_grow(struct span_stack * stack, const struct buf * buf, const 
 	return SUCCESS;
 }
 
-inline Status span_stack_push(struct span_stack * stack, enum span span,
-		const struct buf * buf, const char * itr) {
+static inline Status span_stack_push(struct span_stack * stack, enum span span,
+		const struct buffer * buf, const char * itr) {
 	ASSERT_SPAN_STACK(stack);
 
 	if (stack->len == stack->cap
-			&& stack_grow(stack, buf, itr) == FAILURE)
+			&& span_stack_grow(stack, buf, itr) == FAILURE)
 		return FAILURE;
 	stack->vals[stack->len++] = span;
 }
 
-inline void span_stack_clear(struct stack * stack) {
+static inline void span_stack_clear(struct span_stack * stack) {
 	ASSERT_SPAN_STACK(stack);
 
 	stack->len = 0;
 }
 
-inline Status add_open_spans(Doc_area_list * list, struct span_stack * open_spans
-		struct span_stack * new_open_spans, const struct buf * buf, const char * itr) {
+static inline Status add_open_spans(Doc_area_list * list, struct span_stack * open_spans,
+		struct span_stack * new_open_spans, const struct buffer * buf, const char * itr) {
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(new_open_spans);
 
 	Status stat;
 	for (size_t i = 0; i < new_open_spans->len; i++) {
-		switch (new_open_spans[i]) {
+		switch (new_open_spans->vals[i]) {
 		case SP_UNDER:
 			stat = doc_area_list_u_begin(list);
 			break;
 		default:
-			ERR("Unknown span: %d", new_open_spans[i]);
+			ERR("Unknown span: %d", new_open_spans->vals[i]);
 			exit(1);
 		}
 		if (stat == FAILURE
-				|| span_stack_push(open_spans, new_open_spans[i], buf, itr) == FAILURE)
+				|| span_stack_push(open_spans, new_open_spans->vals[i], buf, itr) == FAILURE)
 			return FAILURE;
 	}
 	span_stack_clear(new_open_spans);
 }
 	
-inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spans
+static inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spans,
 		struct span_stack * close_spans) {
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(close_spans);
@@ -224,13 +230,13 @@ inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spa
 	Status stat;
 	for (size_t i = 0; i < close_spans->len; i++) {
 		// spans should match
-		assert(close_spans[i] == open_spans[open_spans->len - 1 - i]);
-		switch (close_spans[i]) {
+		assert(close_spans->vals[i] == open_spans->vals[open_spans->len - 1 - i]);
+		switch (close_spans->vals[i]) {
 		case SP_UNDER:
 			stat = doc_area_list_u_end(list);
 			break;
 		default:
-			ERR("Unknown span: %d", close_spans[i]);
+			ERR("Unknown span: %d", close_spans->vals[i]);
 			exit(1);
 		}
 		if (stat == FAILURE)
@@ -239,6 +245,12 @@ inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spa
 	open_spans->len -= close_spans->len;
 	span_stack_clear(close_spans);
 }
+
+#define READMORE_EOF_ERR(buf, do_eof, do_err) \
+	if (feof((buf)->in)) \
+		do_eof; \
+	else if (read_more(buf) == FAILURE) \
+		do_err; 
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
 	Doc_area_list * p = doc_area_list_new();
@@ -272,10 +284,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (!c) { 
 			PTEST("NULL");
 			char * old_line = buf->line; 
-			if (feof(buf->in)) 
-				break; 
-			else if (read_more(buf) == FAILURE) 
-				goto err; 
+			READMORE_EOF_ERR(buf, break, goto err)
 			size_t shift = buf->line - old_line;
 			itr += shift;
 			wordstart += shift;
@@ -303,7 +312,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				update_line(buf, itr);
 				if (prevc == '\n')
 					break;
-				prevc = '\n'
+				prevc = '\n';
 				wordstart = itr;
 				parsing_comment = false;
 			}
@@ -340,12 +349,12 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				if (parsing_word) {
 					if (close_spans.len == open_spans.len
 							|| open_spans.vals[open_spans.len - 1 - close_spans.len] != SP_UNDER) {
-						SYN_ERR(buf, itr - 2, "Unmatched underline terminator");
+						SYNERR(buf, itr - 2, "Unmatched underline terminator");
 						goto err;
 					}
 					if (!wordend)
 						wordend = itr - 2;
-					if (span_stack_push(&close_spans, SP_UNDER) == FAILURE)
+					if (span_stack_push(&close_spans, SP_UNDER, buf, itr) == FAILURE)
 						goto err;
 				}
 				else {
@@ -363,7 +372,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		// else word
 		PTEST("WORD: %s", wordstart);
 		parsing_word = true;
-		word_end = NULL;
+		wordend = NULL;
 		prevc = 0;
 		span_stack_clear(&close_spans);
 		if (add_open_spans(p, &open_spans, &new_open_spans, buf, itr) == FAILURE)
@@ -381,9 +390,9 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			goto err;
 	}
 
-	if (open_spans->len != 0) {
+	if (open_spans.len != 0) {
 		// TODO: more specific message
-		SYN_ERR(buf, itr, "Unterminated markers");
+		SYNERR(buf, itr, "Unterminated markers");
 		goto err;
 	}
 
@@ -429,31 +438,38 @@ Status compile(FILE * in, Doc * doc) {
 		goto err;
 
 	// read and compile until eof or error
+	char * itr = buf.line;
+	char c;
 	while (1) {
-		char * itr = buf.line;
 
-		// process line by line
-		while (*itr != '\n') {
+		c = *itr++;
 
-			// ensure there is another character
-			ENSURE1DD(&buf, itr, goto break2, goto err);
-			
-			// if we hit a printable character,
-			//  compile what follows as a paragraph
-			if (*itr > ' ') {
-				if (compile_pg(&buf, doc) == FAILURE)
-					goto err;
-				// buffer is shifted now
-				itr = buf.line;
-			}
-		} // end of line
+		// ensure there is another character
+		if (!c) {
+			char * prev_line = buf.line;
+			READMORE_EOF_ERR(&buf, break, goto err)
+			itr += buf.line - prev_line;
+			continue;
+		}
 
-		// update line count
-		buf.line++;
+		// end of line
+		if (c == '\n') {
+			update_line(&buf, itr);
+			continue;
+		}
+		
+		// if we hit a printable character,
+		//  compile what follows as a paragraph
+		if (c > ' ') {
+			if (compile_pg(&buf, doc) == FAILURE)
+				goto err;
+			// buffer is shifted now
+			itr = buf.line;
+			continue;
+		}
 
 	} // end of file
 
-break2:
 	ret = SUCCESS;
 err:
 	free(buf.start);
