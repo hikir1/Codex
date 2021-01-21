@@ -22,7 +22,7 @@ void showctx(const struct buffer * buf, const char * pos) {
 	assert(buf);
 	assert(pos);
 	assert(buf->line);
-	assert(pos > buf->line);
+	assert(pos >= buf->line); // TODO: = ok here?
 	#define MAX_CTX 64
 	#define MIN_POST 3
 	#define ELLIPSIS "..."
@@ -276,9 +276,15 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 		c = *itr++;
 
-		// symbols found that dont have special meaning
-		if (prevc > ' ' && prevc != c)
+		// symbols found that dont have special meaning //TODO: this is same as last case
+		if (prevc > ' ' && prevc != c) {
 			parsing_word = true;
+			wordend = NULL;
+			prevc = 0;
+			span_stack_clear(&close_spans);
+			if (add_open_spans(p, &open_spans, &new_open_spans, buf, itr) == FAILURE)
+				goto err;
+		}
 
 		// nul
 		if (!c) { 
@@ -299,7 +305,6 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				if (doc_area_list_add_word(p, wordstart, wordend - wordstart) == FAILURE
 						|| add_close_spans(p, &open_spans, &close_spans) == FAILURE)
 					goto err;
-				wordstart = itr;
 				wordend = NULL;
 				parsing_word = false;
 			}
@@ -313,14 +318,13 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				if (prevc == '\n')
 					break;
 				prevc = '\n';
-				wordstart = itr;
 				parsing_comment = false;
 			}
 			else {
 				PTEST("SPACE");
-				wordstart++;
 				prevc = 0;
 			}
+			wordstart = itr;
 				
 			continue;
 		}
@@ -379,6 +383,9 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			goto err;
 
 	} // end of pg
+
+	if (!c)
+		itr--;
 
 	update_line(buf, itr);
 
