@@ -126,6 +126,13 @@ enum span {
 	SP_UNDER,
 };
 
+enum punct {
+	PU_NONE,
+	PU_DOT,
+	PU_2DOT,
+	PU_3DOT,
+};
+
 struct span_stack {
 	enum span * vals;
 	size_t len;
@@ -224,20 +231,21 @@ static inline Status add_open_spans(Doc_area_list * list, struct span_stack * op
 		return FAILURE;
 }
 
-static inline Status add_punct(Doc_area_list * list, enum punct punct) {
+static inline Status add_punct(Doc_area_list * list, enum punct punct,
+		const struct buffer * buf, const char * itr) {
 	assert(list);
 
 	Status stat;
 	switch (punct) {
 	case PU_DOT:
-		stat = doc_area_list_sentence_period(".");
+		stat = doc_area_list_sentence_period(list);
 		break;
 	case PU_2DOT:
 		SYNERR(buf, itr, "Double period");
 		stat = FAILURE;
 		break;
 	case PU_3DOT:
-		stat = doc_area_list_ellipsis("...");
+		stat = doc_area_list_ellipsis(list);
 		break;
 	default:
 		ERR("Unknown punctuation: %d", punct);
@@ -247,7 +255,8 @@ static inline Status add_punct(Doc_area_list * list, enum punct punct) {
 }
 	
 static inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spans,
-		struct span_stack * close_spans, enum punct punct) {
+		struct span_stack * close_spans, enum punct punct,
+		const struct buffer * buf, const char * itr) {
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(close_spans);
 	assert(list);
@@ -262,7 +271,7 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 			stat = doc_area_list_u_end(list);
 			break;
 		case SP_PUNCT:
-			stat = add_punct(list, punct); // TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+			stat = add_punct(list, punct, buf, itr); // TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 			break;
 		default:
 			ERR("Unknown span: %d", close_spans->vals[i]);
@@ -283,13 +292,6 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 
 #define WORDC 0x80
 #define IGNOREC 0
-
-enum punct {
-	PU_NONE,
-	PU_DOT,
-	PU_2DOT,
-	PU_3DOT,
-};
 
 Status compile_pg(struct buffer * buf, Doc * doc) {
 	Doc_area_list * p = doc_area_list_new();
@@ -344,7 +346,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				if (!wordend)
 					wordend = itr - 1;
 				if (doc_area_list_add_word(p, wordstart, wordend - wordstart) == FAILURE
-						|| add_close_spans(p, &open_spans, &close_spans) == FAILURE)
+						|| add_close_spans(p, &open_spans, &close_spans, punct, buf, itr - 1) == FAILURE)
 					goto err;
 				wordend = NULL;
 				parsing_word = false;
@@ -461,7 +463,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (!wordend)
 			wordend = itr;
 		if (doc_area_list_add_word(p, wordstart, itr - wordstart) == FAILURE
-				|| add_close_spans(p, &open_spans, &close_spans) == FAILURE)
+				|| add_close_spans(p, &open_spans, &close_spans, punct, buf, itr - 1) == FAILURE)
 			goto err;
 	}
 

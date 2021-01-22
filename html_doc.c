@@ -201,7 +201,7 @@ Status doc_area_list_add_word(struct doc_area_list * list, const char * word, si
 	memcpy(ptr, word, len);
 	if (list->nospace) {
 		ptr[len] = '\0';
-		list>idx += len;
+		list->idx += len;
 		list->nospace = false;
 	}
 	else {
