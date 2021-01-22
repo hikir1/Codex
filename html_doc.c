@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <stdbool.h>
 
 #include "util.h"
 #include "doc.h"
@@ -23,6 +24,7 @@ struct doc_area_list {
 	struct area_list_node head;
 	struct area_list_node * tailp;
 	size_t idx;
+	bool nospace;
 };
 
 #define ASSERT_DAL(list) do { \
@@ -147,6 +149,7 @@ struct doc_area_list * doc_area_list_new() {
 	list->tailp = &list->head;
 	list->idx = 0;
 	list->head.frag[0] = '\0';
+	list->nospace = true;
 	return list;
 }
 
@@ -176,7 +179,8 @@ Status doc_area_list_add_word(struct doc_area_list * list, const char * word, si
 	size_t rem = MAXWORDLEN - idx;
 	struct area_list_node * node = list->tailp;
 	char * ptr = node->frag + idx;
-	while (len + 1 > rem) {
+	size_t lenwspc = list->nospace? len: len + 1;
+	while (lenwspc > rem) {
 		memcpy(ptr, word, rem);
 		ptr[rem] = '\0';
 		
@@ -195,20 +199,38 @@ Status doc_area_list_add_word(struct doc_area_list * list, const char * word, si
 		rem = MAXWORDLEN;
 	}
 	memcpy(ptr, word, len);
-	ptr[len] = ' ';
-	ptr[len + 1] = '\0';
-	list->idx += len + 1;
+	if (list->nospace) {
+		ptr[len] = '\0';
+		list>idx += len;
+		list->nospace = false;
+	}
+	else {
+		ptr[len] = ' ';
+		ptr[len + 1] = '\0';
+		list->idx += len + 1;
+	}
 }
 
 Status doc_area_list_u_begin(struct doc_area_list * list) {
 	#define UBEG "<u>"
-	return doc_area_list_add_word(list, UBEG, SSTRLEN(UBEG));
+	Status stat = doc_area_list_add_word(list, UBEG, SSTRLEN(UBEG));
+	list->nospace = true;
+	return stat;
 }
 
 Status doc_area_list_u_end(struct doc_area_list * list) {
 	#define UEND "</u>"
+	list->nospace = true;
 	return doc_area_list_add_word(list, UEND, SSTRLEN(UEND));
 }
 
+Status doc_area_list_sentence_period(struct doc_area_list * list) {
+	list->nospace = true;
+	return doc_area_list_add_word(list, ".", 1);
+}
 
-	
+Status doc_area_list_ellipsis(struct doc_area_list * list) {
+	#define ELLIPSIS "..."
+	list->nospace = true;
+	return doc_area_list_add_word(list, ELLIPSIS, SSTRLEN(ELLIPSIS));
+}
