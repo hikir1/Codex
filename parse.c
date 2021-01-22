@@ -122,6 +122,7 @@ static inline void update_line(struct buffer * buf, char * itr) {
 }
 
 enum span {
+	SP_PUNCT,
 	SP_UNDER,
 };
 
@@ -219,12 +220,37 @@ static inline Status add_open_spans(Doc_area_list * list, struct span_stack * op
 			return FAILURE;
 	}
 	span_stack_clear(new_open_spans);
+	if (span_stack_push(open_spans, SP_PUNCT, buf, itr) == FAILURE)
+		return FAILURE;
+}
+
+static inline Status add_punct(Doc_area_list * list, enum punct punct) {
+	assert(list);
+
+	Status stat;
+	switch (punct) {
+	case PU_DOT:
+		stat = doc_area_list_sentence_period(".");
+		break;
+	case PU_2DOT:
+		SYNERR(buf, itr, "Double period");
+		stat = FAILURE;
+		break;
+	case PU_3DOT:
+		stat = doc_area_list_ellipsis("...");
+		break;
+	default:
+		ERR("Unknown punctuation: %d", punct);
+		exit(1);
+	}
+	return stat;
 }
 	
 static inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spans,
-		struct span_stack * close_spans) {
+		struct span_stack * close_spans, enum punct punct) {
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(close_spans);
+	assert(list);
 	assert(close_spans->len <= open_spans->len);
 
 	Status stat;
@@ -234,6 +260,9 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 		switch (close_spans->vals[i]) {
 		case SP_UNDER:
 			stat = doc_area_list_u_end(list);
+			break;
+		case SP_PUNCT:
+			stat = add_punct(list, punct); // TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 			break;
 		default:
 			ERR("Unknown span: %d", close_spans->vals[i]);
@@ -252,6 +281,16 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 	else if (read_more(buf) == FAILURE) \
 		do_err; 
 
+#define WORDC 0x80
+#define IGNOREC 0
+
+enum punct {
+	PU_NONE,
+	PU_DOT,
+	PU_2DOT,
+	PU_3DOT,
+};
+
 Status compile_pg(struct buffer * buf, Doc * doc) {
 	Doc_area_list * p = doc_area_list_new();
 	if (!p)
@@ -268,19 +307,21 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 	char * wordend = NULL;
 	bool parsing_comment = false;
 	bool parsing_word = false;
-	char prevc = 0;
-	char c;
+	enum punct punct = PU_NONE;
+	int prevc = 0;
+	int c;
 
 	// build paragraph until double newline, eof, or error
 	while (1) {
 
 		c = *itr++;
 
-		// symbols found that dont have special meaning //TODO: this is same as last case
-		if (prevc > ' ' && prevc != c) {
+		// symbols found that dont have special meaning
+		if (!parsing_word && prevc > ' ' && prevc != c) {
 			parsing_word = true;
 			wordend = NULL;
-			prevc = 0;
+			punct = PU_NONE;
+			prevc = IGNOREC;
 			span_stack_clear(&close_spans);
 			if (add_open_spans(p, &open_spans, &new_open_spans, buf, itr) == FAILURE)
 				goto err;
@@ -322,7 +363,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			}
 			else {
 				PTEST("SPACE");
-				prevc = 0;
+				prevc = IGNOREC;
 			}
 			wordstart = itr;
 				
@@ -339,7 +380,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			// second pound = line comment
 			if (prevc == '#') {
 				parsing_comment = true;
-				prevc = 0;
+				prevc = IGNOREC;
 			}
 			else
 				prevc = '#';
@@ -358,29 +399,56 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 					}
 					if (!wordend)
 						wordend = itr - 2;
-					if (span_stack_push(&close_spans, SP_UNDER, buf, itr) == FAILURE)
+					if (span_stack_push(&close_spans, SP_UNDER, buf, itr - 2) == FAILURE)
 						goto err;
 				}
 				else {
 					wordstart += 2;
-					if (span_stack_push(&new_open_spans, SP_UNDER, buf, itr) == FAILURE)
+					if (span_stack_push(&new_open_spans, SP_UNDER, buf, itr - 2) == FAILURE)
 						goto err;
 				}
-				prevc = 0;
+				prevc = IGNOREC;
 			}
 			else
 				prevc = '_';
 			continue;
 		}
 
+		if (c == '.') {
+			if (!parsing_word) {
+				SYNERR(buf, itr - 1, "Invalid location for period");
+				goto err;
+			}
+			if (prevc == '.') {
+				assert(punct != PU_NONE);
+				assert(close_spans.len > 0);
+				assert(close_spans.vals[close_spans.len - 1] == SP_PUNCT);
+				if (punct == PU_DOT)
+					punct = PU_2DOT;
+				else if (punct == PU_2DOT)
+					punct = PU_3DOT;
+				else {
+					SYNERR(buf, itr - 1, "Too many periods");
+					goto err;
+				}
+			}
+			else if (punct != PU_NONE) {
+				SYNERR(buf, itr - 1, "Invalid location for period");
+				goto err;
+			}
+			else {
+				punct = PU_DOT;
+				prevc = '.';
+				if (span_stack_push(&close_spans, SP_PUNCT, buf, itr - 1) == FAILURE)
+					goto err;
+			}
+			continue;
+		}
+
+
 		// else word
 		PTEST("WORD: %s", (itr - 1));
-		parsing_word = true;
-		wordend = NULL;
-		prevc = 0;
-		span_stack_clear(&close_spans);
-		if (add_open_spans(p, &open_spans, &new_open_spans, buf, itr) == FAILURE)
-			goto err;
+		prevc = WORDC;
 
 	} // end of pg
 
@@ -389,7 +457,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 	update_line(buf, itr);
 
-	if (parsing_word) {
+	if (parsing_word || prevc > ' ') {
 		if (!wordend)
 			wordend = itr;
 		if (doc_area_list_add_word(p, wordstart, itr - wordstart) == FAILURE
