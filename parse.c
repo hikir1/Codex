@@ -52,7 +52,7 @@ void showctx(const struct buffer * buf, const char * pos) {
 	@amt amount of data to read, discluding null byte
 	@in the input file
 */
-int try_read(struct buffer * buf, size_t idx, size_t amt) {
+Status try_read(struct buffer * buf, size_t idx, size_t amt) {
 	assert(buf);
 	assert(buf->in);
 	assert(idx < buf->cap);
@@ -77,7 +77,7 @@ int try_read(struct buffer * buf, size_t idx, size_t amt) {
 	SIDE EFFECTS: external pointers to buffer will be invalidated
 */
 //	TODO: review and debug this, then test
-int read_more(struct buffer * buf) {
+Status read_more(struct buffer * buf) {
 	assert(buf);
 	assert(buf->in);
 	assert(!ferror(buf->in));
@@ -199,6 +199,7 @@ static inline Status span_stack_push(struct span_stack * stack, enum span span,
 			&& span_stack_grow(stack, buf, itr) == FAILURE)
 		return FAILURE;
 	stack->vals[stack->len++] = span;
+	return SUCCESS;
 }
 
 static inline void span_stack_clear(struct span_stack * stack) {
@@ -261,7 +262,6 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 	assert(list);
 
 	Status stat;
-	enum span span;
 	size_t num_punct = 0;
 	for (size_t i = 0; i < close_spans->len; i++) {
 			
@@ -283,6 +283,7 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 	}
 	open_spans->len -= close_spans->len - num_punct;
 	span_stack_clear(close_spans);
+	return SUCCESS;
 }
 
 #define READMORE_EOF_ERR(buf, do_eof, do_err) \
