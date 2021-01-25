@@ -227,8 +227,7 @@ static inline Status add_open_spans(Doc_area_list * list, struct span_stack * op
 			return FAILURE;
 	}
 	span_stack_clear(new_open_spans);
-	if (span_stack_push(open_spans, SP_PUNCT, buf, itr) == FAILURE)
-		return FAILURE;
+	return SUCCESS;
 }
 
 static inline Status add_punct(Doc_area_list * list, enum punct punct,
@@ -260,18 +259,20 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(close_spans);
 	assert(list);
-	assert(close_spans->len <= open_spans->len);
 
 	Status stat;
+	enum span span;
+	size_t num_punct = 0;
 	for (size_t i = 0; i < close_spans->len; i++) {
+			
 		// spans should match
-		assert(close_spans->vals[i] == open_spans->vals[open_spans->len - 1 - i]);
 		switch (close_spans->vals[i]) {
 		case SP_UNDER:
 			stat = doc_area_list_u_end(list);
 			break;
 		case SP_PUNCT:
-			stat = add_punct(list, punct, buf, itr); // TODO <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+			stat = add_punct(list, punct, buf, itr);
+			num_punct++;
 			break;
 		default:
 			ERR("Unknown span: %d", close_spans->vals[i]);
@@ -280,7 +281,7 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 		if (stat == FAILURE)
 			return FAILURE;
 	}
-	open_spans->len -= close_spans->len;
+	open_spans->len -= close_spans->len - num_punct;
 	span_stack_clear(close_spans);
 }
 

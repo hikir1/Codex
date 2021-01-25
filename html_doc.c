@@ -23,14 +23,14 @@ struct area_list_node {
 struct doc_area_list {
 	struct area_list_node head;
 	struct area_list_node * tailp;
-	size_t idx;
-	bool nospace;
+	size_t fraglen;
+	bool prespc;
 };
 
 #define ASSERT_DAL(list) do { \
 	assert(list->tailp); \
-	assert(list->idx >= 0); \
-	assert(list->idx <= DALFRAGLEN); \
+	assert(list->fraglen >= 0); \
+	assert(list->fraglen <= DALFRAGLEN); \
 } while (0)
 
 /**
@@ -147,9 +147,9 @@ struct doc_area_list * doc_area_list_new() {
 		return NULL;
 	}
 	list->tailp = &list->head;
-	list->idx = 0;
+	list->fraglen = 0;
 	list->head.frag[0] = '\0';
-	list->nospace = true;
+	list->prespc = false;
 	return list;
 }
 
@@ -171,66 +171,85 @@ Status doc_area_list_free(struct doc_area_list * list) {
 	return SUCCESS;
 }
 
+static Status area_list_grow(struct doc_area_list * list) {
+	ASSERT_DAL(list);
+
+	struct area_list_node * node = malloc(sizeof(struct area_list_node));
+	if (!node) {
+		LIBERRN();
+		return FAILURE;
+	}
+
+	node->next = NULL;
+	node->frag[0] = '\0';
+	
+	list->tailp->next = node;
+	list->tailp = node;
+	list->fraglen = 0;
+	
+	return SUCCESS;
+}
+
+#define MAXWORDLEN DALFRAGLEN - 1 // (1 nul)
+
 Status doc_area_list_add_word(struct doc_area_list * list, const char * word, size_t len) {
 	ASSERT_DAL(list);
 
-	size_t idx = list->idx;
-	#define MAXWORDLEN DALFRAGLEN - 1 // (1 nul)
-	size_t rem = MAXWORDLEN - idx;
-	struct area_list_node * node = list->tailp;
-	char * ptr = node->frag + idx;
-	size_t lenwspc = list->nospace? len: len + 1;
-	while (lenwspc > rem) {
+	size_t rem = MAXWORDLEN - list->fraglen;
+	char * ptr = list->tailp->frag + list->fraglen;
+	if (list->prespc) {
+		if (rem == 0) {
+			if (area_list_grow(list) == FAILURE)
+				return FAILURE;
+			ptr = list->tailp->frag;
+			rem = MAXWORDLEN;
+		}
+		*ptr++ = ' ';
+		list->fraglen++;
+		rem--;
+	}
+	else
+		list->prespc = true;
+	while (len > rem) {
 		memcpy(ptr, word, rem);
 		ptr[rem] = '\0';
-		
-		struct area_list_node * next = malloc(sizeof(struct area_list_node));
-		if (!next) {
-			LIBERRN();
-			return FAILURE;
-		}
 
-		node->next = next;
-		list->tailp = next;
-		list->idx = 0;
-		ptr = next->frag;
-		word += rem;
+		if (area_list_grow(list) == FAILURE)
+			return FAILURE;
+
 		len -= rem;
+		word += rem;
+
+		ptr = list->tailp->frag;
 		rem = MAXWORDLEN;
 	}
 	memcpy(ptr, word, len);
-	if (list->nospace) {
-		ptr[len] = '\0';
-		list->idx += len;
-		list->nospace = false;
-	}
-	else {
-		ptr[len] = ' ';
-		ptr[len + 1] = '\0';
-		list->idx += len + 1;
-	}
+	ptr[len] = '\0';
+	list->fraglen += len;
+
+	return SUCCESS;
 }
 
 Status doc_area_list_u_begin(struct doc_area_list * list) {
 	#define UBEG "<u>"
 	Status stat = doc_area_list_add_word(list, UBEG, SSTRLEN(UBEG));
-	list->nospace = true;
+	list->prespc = false;
 	return stat;
 }
 
 Status doc_area_list_u_end(struct doc_area_list * list) {
 	#define UEND "</u>"
-	list->nospace = true;
+	list->prespc = false;
 	return doc_area_list_add_word(list, UEND, SSTRLEN(UEND));
 }
 
 Status doc_area_list_sentence_period(struct doc_area_list * list) {
-	list->nospace = true;
+	list->prespc = false;
 	return doc_area_list_add_word(list, ".", 1);
 }
 
 Status doc_area_list_ellipsis(struct doc_area_list * list) {
 	#define ELLIPSIS "..."
-	list->nospace = true;
+	list->prespc = false;
 	return doc_area_list_add_word(list, ELLIPSIS, SSTRLEN(ELLIPSIS));
 }
