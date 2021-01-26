@@ -122,7 +122,6 @@ static inline void update_line(struct buffer * buf, char * itr) {
 }
 
 enum span {
-	SP_PUNCT,
 	SP_UNDER,
 };
 
@@ -234,6 +233,8 @@ static inline Status add_open_spans(Doc_area_list * list, struct span_stack * op
 static inline Status add_punct(Doc_area_list * list, enum punct punct,
 		const struct buffer * buf, const char * itr) {
 	assert(list);
+	assert(buf);
+	assert(itr);
 
 	Status stat;
 	switch (punct) {
@@ -253,35 +254,54 @@ static inline Status add_punct(Doc_area_list * list, enum punct punct,
 	}
 	return stat;
 }
+
+static inline Status add_close_span(Doc_area_list * list, enum span span) {
+	Status stat;
+	switch (span) {
+	case SP_UNDER:
+		stat = doc_area_list_u_end(list);
+		break;
+	default:
+		ERR("Unknown span: %d", span);
+		exit(EXIT_FAILURE);
+	}
+	return stat;
+}
+
+#define NOIDX SIZE_MAX
 	
 static inline Status add_close_spans(Doc_area_list * list, struct span_stack * open_spans,
-		struct span_stack * close_spans, enum punct punct,
+		struct span_stack * close_spans, enum punct punct, size_t punct_span_idx,
 		const struct buffer * buf, const char * itr) {
 	ASSERT_SPAN_STACK(open_spans);
 	ASSERT_SPAN_STACK(close_spans);
 	assert(list);
 
-	Status stat;
-	size_t num_punct = 0;
-	for (size_t i = 0; i < close_spans->len; i++) {
-			
-		// spans should match
-		switch (close_spans->vals[i]) {
-		case SP_UNDER:
-			stat = doc_area_list_u_end(list);
-			break;
-		case SP_PUNCT:
-			stat = add_punct(list, punct, buf, itr);
-			num_punct++;
-			break;
-		default:
-			ERR("Unknown span: %d", close_spans->vals[i]);
-			exit(1);
+	size_t i = 0;
+	if (punct != PU_NONE) {
+		assert(punct_span_idx != NOIDX);
+		assert(punct_span_idx <= close_spans->len);
+
+		for (; i < punct_span_idx; i++) {
+
+			// spans should match
+			assert(close_spans->vals[i] == open_spans->vals[open_spans->len - 1 - i]);
+
+			if (add_close_span(list, close_spans->vals[i]) == FAILURE)
+				return FAILURE;
 		}
-		if (stat == FAILURE)
+
+		if (add_punct(list, punct, buf, itr) == FAILURE)
 			return FAILURE;
 	}
-	open_spans->len -= close_spans->len - num_punct;
+	for (; i < close_spans->len; i++) {
+		assert(close_spans->vals[i] == open_spans->vals[open_spans->len - 1 - i]);
+
+		if (add_close_span(list, close_spans->vals[i]) == FAILURE)
+			return FAILURE;
+	}
+		
+	open_spans->len -= close_spans->len;
 	span_stack_clear(close_spans);
 	return SUCCESS;
 }
@@ -312,6 +332,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 	bool parsing_comment = false;
 	bool parsing_word = false;
 	enum punct punct = PU_NONE;
+	size_t punct_span_idx = NOIDX;
 	int prevc = 0;
 	int c;
 
@@ -348,10 +369,13 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				if (!wordend)
 					wordend = itr - 1;
 				if (doc_area_list_add_word(p, wordstart, wordend - wordstart) == FAILURE
-						|| add_close_spans(p, &open_spans, &close_spans, punct, buf, itr - 1) == FAILURE)
+						|| add_close_spans(p, &open_spans, &close_spans,
+								punct, punct_span_idx, buf, itr - 1) == FAILURE)
 					goto err;
 				wordend = NULL;
 				parsing_word = false;
+				punct = PU_NONE;
+				punct_span_idx = NOIDX;
 			}
 			else {
 				// ignore markers surrounded by space
@@ -425,8 +449,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			}
 			if (prevc == '.') {
 				assert(punct != PU_NONE);
-				assert(close_spans.len > 0);
-				assert(close_spans.vals[close_spans.len - 1] == SP_PUNCT);
+				assert(punct_span_idx != NOIDX);
 				if (punct == PU_DOT)
 					punct = PU_2DOT;
 				else if (punct == PU_2DOT)
@@ -442,9 +465,8 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			}
 			else {
 				punct = PU_DOT;
+				punct_span_idx = close_spans.len;
 				prevc = '.';
-				if (span_stack_push(&close_spans, SP_PUNCT, buf, itr - 1) == FAILURE)
-					goto err;
 			}
 			continue;
 		}
@@ -465,7 +487,8 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (!wordend)
 			wordend = itr;
 		if (doc_area_list_add_word(p, wordstart, itr - wordstart) == FAILURE
-				|| add_close_spans(p, &open_spans, &close_spans, punct, buf, itr - 1) == FAILURE)
+				|| add_close_spans(p, &open_spans, &close_spans,
+						punct, punct_span_idx, buf, itr - 1) == FAILURE)
 			goto err;
 	}
 
