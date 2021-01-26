@@ -122,6 +122,7 @@ static inline void update_line(struct buffer * buf, char * itr) {
 }
 
 enum span {
+	SP_NONE,
 	SP_UNDER,
 };
 
@@ -206,6 +207,13 @@ static inline void span_stack_clear(struct span_stack * stack) {
 
 	stack->len = 0;
 }
+
+static inline Status span_stack_pop(struct span_stack * stack) {
+	ASSERT_SPAN_STACK(stack);
+
+	return stack->len == 0? SP_NONE: stack->vals[--stack->len];
+}
+
 
 static inline Status add_open_spans(Doc_area_list * list, struct span_stack * open_spans,
 		struct span_stack * new_open_spans, const struct buffer * buf, const char * itr) {
@@ -314,23 +322,27 @@ static inline Status add_close_spans(Doc_area_list * list, struct span_stack * o
 
 #define WORDC 0x80
 #define IGNOREC 0
+#define ISSPACE(c) ((c) <= ' ')
 
-Status compile_pg(struct buffer * buf, Doc * doc) {
-	Doc_area_list * p = doc_area_list_new();
-	if (!p)
-		return FAILURE;
-	struct span_stack open_spans = {};
-	struct span_stack new_open_spans = {};
-	struct span_stack close_spans = {};
-	if (span_stack_init(&open_spans) == FAILURE
-			|| span_stack_init(&new_open_spans) == FAILURE
-			|| span_stack_init(&close_spans) == FAILURE)
-		goto err;
+enum ctx {
+	WORD_CTX,
+	PARAGRAPH_CTX,
+	COMMENT_CTX,
+};
+
+static inline Status parse(
+		struct buffer * buf,
+		struct span_stack * open_spans,
+		struct span_stack * new_open_spans,
+		struct span_stack * close_spans,
+		struct tok_stream * toks,
+		struct text_stream * texts
+		) {
+
 	char * itr = buf->line;
 	char * wordstart = itr;
 	char * wordend = NULL;
-	bool parsing_comment = false;
-	bool parsing_word = false;
+	enum ctx ctx = WORD;
 	enum punct punct = PU_NONE;
 	size_t punct_span_idx = NOIDX;
 	int prevc = 0;
@@ -341,22 +353,23 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 		c = *itr++;
 
+		// TODO: get rid of this
 		// symbols found that dont have special meaning
-		if (!parsing_word && prevc > ' ' && prevc != c) {
-			parsing_word = true;
+		if (ctx == PRE_WORD && !ISSPACE(prevc) && prevc != c) {
+			ctx = MID_WORD;
 			wordend = NULL;
 			punct = PU_NONE;
 			prevc = IGNOREC;
 			span_stack_clear(&close_spans);
 			if (add_open_spans(p, &open_spans, &new_open_spans, buf, itr) == FAILURE)
-				goto err;
+				return FAILURE;
 		}
 
 		// nul
 		if (!c) { 
 			PTEST("NULL");
 			char * old_line = buf->line; 
-			READMORE_EOF_ERR(buf, break, goto err)
+			READMORE_EOF_ERR(buf, break, return FAILURE)
 			size_t shift = buf->line - old_line;
 			itr += shift - 1;
 			wordstart += shift;
@@ -367,41 +380,38 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 
 		// space
 		if (c <= ' ') {
-			if (parsing_word) {
+			if (ctx == WORD_CTX) {
 				if (!wordend)
 					wordend = itr - 1;
-				if (doc_area_list_add_word(p, wordstart, wordend - wordstart) == FAILURE
-						|| add_close_spans(p, &open_spans, &close_spans,
-								punct, punct_span_idx, buf, itr - 1) == FAILURE)
-					goto err;
-				wordend = NULL;
-				parsing_word = false;
-				punct = PU_NONE;
-				punct_span_idx = NOIDX;
-			}
-			else {
-				// ignore markers surrounded by space
-				span_stack_clear(&new_open_spans);
+				if (add_word(wordstart, itr - 1, toks, texts) == FAILURE)
+					return FAILURE;
+				ctx = PARAGRAPH_CTX;
 			}
 			if (c == '\n') {
 				PTEST("NEWLINE");
 				update_line(buf, itr);
-				if (prevc == '\n')
-					break;
-				prevc = '\n';
-				parsing_comment = false;
+				if (ctx == COMMENT_CTX) {
+					ctx = PARAGRAPH_CTX;
+					prevc = '\n';
+				}
+				else if (prevc == '\n') {
+					tok_stream_push(toks, END_PARAGRAPH_TOK);
+					prevc = IGNOREC;
+					ctx = INITIAL_CTX;
+				}
+				else
+					prevc = '\n';
 			}
 			else {
 				PTEST("SPACE");
 				prevc = IGNOREC;
 			}
 			wordstart = itr;
-				
 			continue;
 		}
 
 		// skip comment
-		if (parsing_comment)
+		if (ctx == COMMENT_CTX)
 			continue;
 
 		// pound
@@ -409,7 +419,7 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			PTEST("POUND");
 			// second pound = line comment
 			if (prevc == '#') {
-				parsing_comment = true;
+				ctx = COMMENT_CTX;
 				prevc = IGNOREC;
 			}
 			else
@@ -421,21 +431,21 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (c == '_') {
 			PTEST("UNDER");
 			if (prevc == '_') {
-				if (parsing_word) {
-					if (close_spans.len == open_spans.len
-							|| open_spans.vals[open_spans.len - 1 - close_spans.len] != SP_UNDER) {
+				if (ctx == WORD_CTX) {
+					if (span_stack_pop(spans) != SP_UNDER)
 						SYNERR(buf, itr - 2, "Unmatched underline terminator");
-						goto err;
+						return FAILURE;
 					}
-					if (!wordend)
-						wordend = itr - 2;
-					if (span_stack_push(&close_spans, SP_UNDER, buf, itr - 2) == FAILURE)
-						goto err;
+					if (add_word(wordstart, itr - 2, toks, texts) == FAILURE
+							|| tok_stream_push(&toks, END_UNDERLINE_TOK) == FAILURE)
+						return FAILURE;
+					ctx = PARAGRAPH_CTX;
 				}
 				else {
 					wordstart += 2;
-					if (span_stack_push(&new_open_spans, SP_UNDER, buf, itr - 2) == FAILURE)
-						goto err;
+					if (span_stack_push(&spans, SP_UNDER) == FAILURE
+							|| tok_stream_push(&toks, START_UNDERLINE_TOK) == FAILURE)
+						return FAILURE;
 				}
 				prevc = IGNOREC;
 			}
@@ -444,40 +454,9 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			continue;
 		}
 
-		if (c == '.') {
-			if (!parsing_word) {
-				SYNERR(buf, itr - 1, "Invalid location for period");
-				goto err;
-			}
-			if (prevc == '.') {
-				assert(punct != PU_NONE);
-				assert(punct_span_idx != NOIDX);
-				if (punct == PU_DOT)
-					punct = PU_2DOT;
-				else if (punct == PU_2DOT)
-					punct = PU_3DOT;
-				else {
-					SYNERR(buf, itr - 1, "Too many periods");
-					goto err;
-				}
-			}
-			else if (punct != PU_NONE) {
-				SYNERR(buf, itr - 1, "Invalid location for period");
-				goto err;
-			}
-			else {
-				if (!wordend)
-					wordend = itr - 1;
-				punct = PU_DOT;
-				punct_span_idx = close_spans.len;
-				prevc = '.';
-			}
-			continue;
-		}
-
-
 		// else word
 		PTEST("WORD: %s", (itr - 1));
+		ctx = WORD_CTX;
 		prevc = WORDC;
 
 	} // end of pg
@@ -493,92 +472,77 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 		if (doc_area_list_add_word(p, wordstart, itr - wordstart) == FAILURE
 				|| add_close_spans(p, &open_spans, &close_spans,
 						punct, punct_span_idx, buf, itr - 1) == FAILURE)
-			goto err;
+			return FAILURE;
 	}
 
 	if (open_spans.len != 0) {
 		// TODO: more specific message
 		SYNERR(buf, itr, "Unterminated markers");
-		goto err;
+		return FAILURE;
 	}
 
-	span_stack_clean(&open_spans);
-	span_stack_clean(&new_open_spans);
-	span_stack_clean(&close_spans);
-
-	// add pg to doc
-	return doc_add_p(doc, p);
-
-err:
-	span_stack_clean(&open_spans);
-	span_stack_clean(&new_open_spans);
-	span_stack_clean(&close_spans);
-	doc_area_list_free(p);
-	return FAILURE;
+	return SUCCESS;
 }
 
-Status compile(FILE * in, Doc * doc) {
-	#ifndef NDEBUG
-	// smaller size means detect problems faster
-	#define DEF_BUF_SIZE 4
-	#else
-	#define DEF_BUF_SIZE 32
-	#endif
+#ifndef NDEBUG
+// smaller size means detect problems faster
+#define DEF_BUF_SIZE 4
+#else
+#define DEF_BUF_SIZE 32
+#endif
+
+inline Status buf_init(struct buffer * buf, FILE * in) {
 
 	// our custom input buffer
-	struct buffer buf = {
-		.in = in,
-		.start = malloc(DEF_BUF_SIZE),
-		.cap = DEF_BUF_SIZE,
-		.line = buf.start,
-		.lineno = 1
-	};
-	Status ret = FAILURE;
-	if (!buf.start) {
+	buf->in = in,
+	buf->start = malloc(DEF_BUF_SIZE),
+	buf->cap = DEF_BUF_SIZE,
+	buf->line = buf.start,
+	buf->lineno = 1
+
+	if (!buf->start) {
 		LIBERRN();
 		return FAILURE;
 	}
+
+	return SUCCESS;
+}
+
+inline Status buf_clean(struct buffer * buf) {
+	free(buf->start);
+	ZERO(buf, sizeof(struct buffer));
+}
+
+
+Status compile(FILE * in, Doc * doc) {
 	
-	// attempt to read the first bytes
-	if (try_read(&buf, 0, DEF_BUF_SIZE - 1) == FAILURE)
-		goto err;
+	Status ret;
 
-	// read and compile until eof or error
-	char * itr = buf.line;
-	char c;
-	while (1) {
+	struct buffer buf = {};
+	struct span_stack open_spans = {};
+	struct span_stack new_open_spans = {};
+	struct span_stack close_spans = {};
+	struct tok_stream toks = {};
+	struct text_stream texts = {};
+	if (buf_init(&buf, in) == FAILURE
+			|| span_stack_init(&open_spans) == FAILURE
+			|| span_stack_init(&new_open_spans) == FAILURE
+			|| span_stack_init(&close_spans) == FAILURE
+			|| tok_stream_init(&toks) == FAILURE
+			|| text_stream_init(&texts) == FAILURE
+				// attempt to read the first bytes
+			|| try_read(&buf, 0, DEF_BUF_SIZE - 1) == FAILURE
+			|| parse(&buf, &open_spans, &new_open_spans, &close_spans, &toks, &texts) == FAILURE
+		ret = FAILURE;
+	else
+		ret = SUCCESS;
 
-		c = *itr++;
-
-		// ensure there is another character
-		if (!c) {
-			char * prev_line = buf.line;
-			READMORE_EOF_ERR(&buf, break, goto err)
-			itr += buf.line - prev_line - 1;
-			continue;
-		}
-
-		// end of line
-		if (c == '\n') {
-			update_line(&buf, itr);
-			continue;
-		}
-		
-		// if we hit a printable character,
-		//  compile what follows as a paragraph
-		if (c > ' ') {
-			if (compile_pg(&buf, doc) == FAILURE)
-				goto err;
-			// buffer is shifted now
-			itr = buf.line;
-			continue;
-		}
-
-	} // end of file
-
-	ret = SUCCESS;
-err:
-	free(buf.start);
+	text_stream_clean(&texts);
+	tok_stream_clean(&toks);
+	span_stack_clean(&close_spans);
+	span_stack_clean(&new_open_spans);
+	span_stack_clean(&open_spans);
+	buf_clean(&buf);
 	return ret;
 }
 

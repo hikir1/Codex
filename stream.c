@@ -9,8 +9,6 @@
 
 #define DEFINE_STREAM(NAME, TYPE) \
 \
-DECLARE_STREAM(NAME, TYPE) \
-\
 struct NAME ## _stream_frag * NAME ## _stream_frag_new() { \
 \
 	struct NAME ## _stream_frag * frag = malloc(sizeof(*frag)); \
@@ -41,8 +39,8 @@ Status NAME ## _stream_init(struct NAME ## _stream * stream) { \
 Status NAME ## _stream_clean(struct NAME ## _stream * stream) { \
 	ASSERT_STREAM(stream); \
 \
-	struct NAME ## _stream_node * itr = stream->head; \
-	struct NAME ## _stream_node * next; \
+	struct NAME ## _stream_frag * itr = stream->head; \
+	struct NAME ## _stream_frag * next; \
 	while (itr) { \
 		next = itr->next; \
 		ZERO(itr, sizeof(struct NAME ## _stream_frag)); \
@@ -54,7 +52,7 @@ Status NAME ## _stream_clean(struct NAME ## _stream * stream) { \
 	return SUCCESS; \
 } \
 \
-Status NAME ## _stream_push(struct NAME ## _stream * stream, enum tok tok) { \
+Status NAME ## _stream_push(struct NAME ## _stream * stream, TYPE tok) { \
 	ASSERT_STREAM(stream); \
 \
 	if (stream->tail_len == STREAM_FRAG_CAP) { \
@@ -69,6 +67,7 @@ Status NAME ## _stream_push(struct NAME ## _stream * stream, enum tok tok) { \
 	} \
 \
 	stream->tail->vals[stream->tail_len++] = tok; \
+	return SUCCESS; \
 }
 
 DEFINE_STREAM(tok, enum tok)

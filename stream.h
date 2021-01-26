@@ -9,8 +9,8 @@
 \
 struct NAME ## _stream_frag { \
 	struct NAME ## _stream_frag * next; \
-	enum tok vals[STREAM_FRAG_CAP]; \
-} \
+	TYPE vals[STREAM_FRAG_CAP]; \
+}; \
 \
 struct NAME ## _stream { \
 	struct NAME ## _stream_frag * head; \
@@ -21,7 +21,7 @@ struct NAME ## _stream { \
 struct NAME ## _stream_frag * NAME ## _stream_frag_new(void); \
 Status NAME ## _stream_init(struct NAME ## _stream * stream); \
 Status NAME ## _stream_clean(struct NAME ## _stream * stream); \
-Status NAME ## _stream_push(struct NAME ## _stream * stream, enum tok tok);
+Status NAME ## _stream_push(struct NAME ## _stream * stream, TYPE tok);
 
 enum tok {
 	WORD,
@@ -31,7 +31,7 @@ enum tok {
 	END_UNDERLINE,
 };
 
-DEFINE_STREAM(tok, enum tok)
-DEFINE_STREAM(text, char *)
+DECLARE_STREAM(tok, enum tok)
+DECLARE_STREAM(text, char *)
 
 #endif // STREAM_H
