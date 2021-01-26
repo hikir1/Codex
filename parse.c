@@ -360,6 +360,8 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 			size_t shift = buf->line - old_line;
 			itr += shift - 1;
 			wordstart += shift;
+			if (wordend)
+				wordend += shift;
 			continue;
 		} 
 
@@ -464,6 +466,8 @@ Status compile_pg(struct buffer * buf, Doc * doc) {
 				goto err;
 			}
 			else {
+				if (!wordend)
+					wordend = itr - 1;
 				punct = PU_DOT;
 				punct_span_idx = close_spans.len;
 				prevc = '.';
