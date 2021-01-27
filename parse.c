@@ -413,7 +413,16 @@ static inline Status parse(
 			}
 
 			else {
-				p.ctx = MAYBE_WORD_CTX;
+				if (p.ctx == MAYBE_WORD_CTX)
+					p.ctx = WORD_CTX;
+				else if (p.ctx == POST_WORD_CTX) {
+					if (p.prevc != IGNOREC) {
+						SYNERR(p.buf, p.itr - 2, "Expected end of word here");
+						return FAILURE;
+					}
+				}
+				else if (p.ctx != WORD_CTX)
+					p.ctx = MAYBE_WORD_CTX;
 				p.prevc = '_';
 			}
 			continue;
