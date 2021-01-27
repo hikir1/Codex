@@ -24,11 +24,11 @@ Status NAME ## _stream_clean(struct NAME ## _stream * stream); \
 Status NAME ## _stream_push(struct NAME ## _stream * stream, TYPE tok);
 
 enum tok {
-	WORD,
-	PERIOD,
-	END_PARAGRAPH,
-	START_UNDERLINE,
-	END_UNDERLINE,
+	CHARS_TOK,
+	END_WORD_TOK,
+	END_PARAGRAPH_TOK,
+	START_UNDERLINE_TOK,
+	END_UNDERLINE_TOK,
 };
 
 DECLARE_STREAM(tok, enum tok)
