@@ -1,4 +1,1 @@
-target/*
-*.pdf
-a.out
-codex
+__pycache__
