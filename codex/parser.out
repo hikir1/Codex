@@ -1,0 +1,206 @@
+Created by PLY version 3.11 (http://www.dabeaz.com/ply)
+
+Grammar
+
+Rule 0     S' -> codex
+Rule 1     codex -> paragraph codex
+Rule 2     paragraph -> word paragraph
+Rule 3     last_paragraph -> word last_paragraph
+Rule 4     word -> CHAR word
+Rule 5     last_word -> CHAR last_word
+Rule 6     codex -> last_paragraph
+Rule 7     paragraph -> last_word ENDPARA
+Rule 8     last_paragraph -> last_word
+Rule 9     word -> SPACE
+Rule 10    last_word -> <empty>
+
+Terminals, with rules where they appear
+
+CHAR                 : 4 5
+ENDPARA              : 7
+SPACE                : 9
+error                : 
+
+Nonterminals, with rules where they appear
+
+codex                : 1 0
+last_paragraph       : 3 6
+last_word            : 5 7 8
+paragraph            : 1 2
+word                 : 2 3 4
+
+Parsing method: LALR
+
+state 0
+
+    (0) S' -> . codex
+    (1) codex -> . paragraph codex
+    (6) codex -> . last_paragraph
+    (2) paragraph -> . word paragraph
+    (7) paragraph -> . last_word ENDPARA
+    (3) last_paragraph -> . word last_paragraph
+    (8) last_paragraph -> . last_word
+    (4) word -> . CHAR word
+    (9) word -> . SPACE
+    (5) last_word -> . CHAR last_word
+    (10) last_word -> .
+
+    CHAR            shift and go to state 6
+    SPACE           shift and go to state 7
+    ENDPARA         reduce using rule 10 (last_word -> .)
+    $end            reduce using rule 10 (last_word -> .)
+
+    codex                          shift and go to state 1
+    paragraph                      shift and go to state 2
+    last_paragraph                 shift and go to state 3
+    word                           shift and go to state 4
+    last_word                      shift and go to state 5
+
+state 1
+
+    (0) S' -> codex .
+
+
+
+state 2
+
+    (1) codex -> paragraph . codex
+    (1) codex -> . paragraph codex
+    (6) codex -> . last_paragraph
+    (2) paragraph -> . word paragraph
+    (7) paragraph -> . last_word ENDPARA
+    (3) last_paragraph -> . word last_paragraph
+    (8) last_paragraph -> . last_word
+    (4) word -> . CHAR word
+    (9) word -> . SPACE
+    (5) last_word -> . CHAR last_word
+    (10) last_word -> .
+
+    CHAR            shift and go to state 6
+    SPACE           shift and go to state 7
+    ENDPARA         reduce using rule 10 (last_word -> .)
+    $end            reduce using rule 10 (last_word -> .)
+
+    paragraph                      shift and go to state 2
+    codex                          shift and go to state 8
+    last_paragraph                 shift and go to state 3
+    word                           shift and go to state 4
+    last_word                      shift and go to state 5
+
+state 3
+
+    (6) codex -> last_paragraph .
+
+    $end            reduce using rule 6 (codex -> last_paragraph .)
+
+
+state 4
+
+    (2) paragraph -> word . paragraph
+    (3) last_paragraph -> word . last_paragraph
+    (2) paragraph -> . word paragraph
+    (7) paragraph -> . last_word ENDPARA
+    (3) last_paragraph -> . word last_paragraph
+    (8) last_paragraph -> . last_word
+    (4) word -> . CHAR word
+    (9) word -> . SPACE
+    (5) last_word -> . CHAR last_word
+    (10) last_word -> .
+
+    CHAR            shift and go to state 6
+    SPACE           shift and go to state 7
+    ENDPARA         reduce using rule 10 (last_word -> .)
+    $end            reduce using rule 10 (last_word -> .)
+
+    word                           shift and go to state 4
+    paragraph                      shift and go to state 9
+    last_paragraph                 shift and go to state 10
+    last_word                      shift and go to state 5
+
+state 5
+
+    (7) paragraph -> last_word . ENDPARA
+    (8) last_paragraph -> last_word .
+
+    ENDPARA         shift and go to state 11
+    $end            reduce using rule 8 (last_paragraph -> last_word .)
+
+
+state 6
+
+    (4) word -> CHAR . word
+    (5) last_word -> CHAR . last_word
+    (4) word -> . CHAR word
+    (9) word -> . SPACE
+    (5) last_word -> . CHAR last_word
+    (10) last_word -> .
+
+    CHAR            shift and go to state 6
+    SPACE           shift and go to state 7
+    ENDPARA         reduce using rule 10 (last_word -> .)
+    $end            reduce using rule 10 (last_word -> .)
+
+    word                           shift and go to state 12
+    last_word                      shift and go to state 13
+
+state 7
+
+    (9) word -> SPACE .
+
+    CHAR            reduce using rule 9 (word -> SPACE .)
+    SPACE           reduce using rule 9 (word -> SPACE .)
+    ENDPARA         reduce using rule 9 (word -> SPACE .)
+    $end            reduce using rule 9 (word -> SPACE .)
+
+
+state 8
+
+    (1) codex -> paragraph codex .
+
+    $end            reduce using rule 1 (codex -> paragraph codex .)
+
+
+state 9
+
+    (2) paragraph -> word paragraph .
+
+    CHAR            reduce using rule 2 (paragraph -> word paragraph .)
+    SPACE           reduce using rule 2 (paragraph -> word paragraph .)
+    ENDPARA         reduce using rule 2 (paragraph -> word paragraph .)
+    $end            reduce using rule 2 (paragraph -> word paragraph .)
+
+
+state 10
+
+    (3) last_paragraph -> word last_paragraph .
+
+    $end            reduce using rule 3 (last_paragraph -> word last_paragraph .)
+
+
+state 11
+
+    (7) paragraph -> last_word ENDPARA .
+
+    CHAR            reduce using rule 7 (paragraph -> last_word ENDPARA .)
+    SPACE           reduce using rule 7 (paragraph -> last_word ENDPARA .)
+    ENDPARA         reduce using rule 7 (paragraph -> last_word ENDPARA .)
+    $end            reduce using rule 7 (paragraph -> last_word ENDPARA .)
+
+
+state 12
+
+    (4) word -> CHAR word .
+
+    CHAR            reduce using rule 4 (word -> CHAR word .)
+    SPACE           reduce using rule 4 (word -> CHAR word .)
+    ENDPARA         reduce using rule 4 (word -> CHAR word .)
+    $end            reduce using rule 4 (word -> CHAR word .)
+
+
+state 13
+
+    (5) last_word -> CHAR last_word .
+
+    ENDPARA         reduce using rule 5 (last_word -> CHAR last_word .)
+    $end            reduce using rule 5 (last_word -> CHAR last_word .)
+
