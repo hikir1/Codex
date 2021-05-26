@@ -42,10 +42,13 @@ def p_word_end(p):
 def p_error(p):
 	print("SYNTAX ERROR!")
 
+def new_parser():
+	return ply.yacc.yacc()
+
 if __name__ == '__main__':
 	if len(sys.argv) != 2:
 		print(f"Usage: {sys.argv[0]} INPUT")
 		sys.exit(1)
 	lexer = codex_lexer.new_lexer()
-	parser = ply.yacc.yacc()
+	parser = new_parser()
 	print(parser.parse(sys.argv[1]))
