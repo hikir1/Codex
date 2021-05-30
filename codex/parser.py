@@ -1,6 +1,4 @@
 import ply.yacc
-from lexer import tokens
-import lexer as codex_lexer
 import sys
 
 class Codex(list):
@@ -18,7 +16,8 @@ def p_prepend(p):
 	   last_paragraph : word last_paragraph
 	   word           : CHAR word
 	   last_word      : CHAR last_word'''
-	p[2].insert(0, p[1])
+	if len(p[1]) != 0:
+		p[2].insert(0, p[1])
 	p[0] = p[2]
 
 def p_codex_end(p):
@@ -46,9 +45,14 @@ def new_parser():
 	return ply.yacc.yacc()
 
 if __name__ == '__main__':
+	import lexer as codex_lexer
+	from lexer import tokens
 	if len(sys.argv) != 2:
 		print(f"Usage: {sys.argv[0]} INPUT")
 		sys.exit(1)
 	lexer = codex_lexer.new_lexer()
 	parser = new_parser()
 	print(parser.parse(sys.argv[1]))
+else:
+	import codex.lexer
+	from codex.lexer import tokens

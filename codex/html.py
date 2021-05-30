@@ -1,5 +1,3 @@
-import parser as codex_parser
-
 def compile(codex, f):
 	f.write('<!DOCTYPE html><html><head></head><body>')
 	for block in codex:
@@ -30,6 +28,7 @@ def write_word(word, f):
 if __name__ == "__main__":
 	import sys
 	import lexer as codex_lexer
+	import parser as codex_parser
 	if len(sys.argv) != 2:
 		print(f"Usage: {sys.argv[0]} INPUT")
 		sys.exit(1)
@@ -38,3 +37,5 @@ if __name__ == "__main__":
 	codex = parser.parse(sys.argv[1])
 	with open("test.html", "w") as f:
 		compile(codex, f)
+else:
+	import codex.parser as codex_parser
