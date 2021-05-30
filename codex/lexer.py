@@ -5,9 +5,19 @@ tokens = (
 	"CHAR",
 	"SPACE",
 	"ENDPARA",
+	"EMPH",
+	"STRONG",
+	"TOO_MANY",
 )
 
+t_STRONG = r"\*\*"
+t_EMPH = r"\*"
 t_CHAR = r"."
+
+def t_TOO_MANY(t):
+	r"\*{4,}"
+	print(f"ERROR: Invalid sequence '{t.value}'")
+	sys.exit(1)
 
 def t_ENDPARA(t):
 	r"[ ]*\n[ ]*\n[ ]*(\n[ ]*)*"

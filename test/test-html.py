@@ -32,4 +32,6 @@ class Test(unittest.TestCase):
 		self.assertHtmlEqual(Codex([Paragraph([ast_word, ast_word])]), p(word + " " + word))
 	def test_double_paragraph(self):
 		self.assertHtmlEqual(Codex([Paragraph([ast_word]), Paragraph([ast_word])]), p(word) + p(word))
+	def test_escaped_chars(self):
+		self.assertHtmlEqual(Codex([Paragraph([Word(["<", ">", "&"])])]), p("&lt;&gt;&amp;"))
 		
