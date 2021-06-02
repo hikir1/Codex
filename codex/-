@@ -27,12 +27,14 @@ def p_emph(p):
 	   last_word : EMPH last_word'''
 	p[2].insert(0, Tag.EMPH)
 	p[0] = p[2]
+	p.parser.context.emph = not p.parser.context.emph
 
 def p_strong(p):
 	'''word      : STRONG word
 	   last_word : STRONG last_word'''
 	p[2].insert(0, Tag.STRONG)
 	p[0] = p[2]
+	p.parser.context.strong = not p.parser.context.strong
 
 def p_codex_end(p):
 	'codex : last_paragraph'
@@ -57,6 +59,7 @@ def p_error(p):
 
 def new_parser():
 	parser = ply.yacc.yacc()
+	parser.context = Context()
 	return parser
 
 if __name__ == '__main__':
