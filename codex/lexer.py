@@ -12,18 +12,14 @@ tokens = (
 	"INVALID",
 )
 
-class Tag(enum.Enum):
-	STRONG = r"\*\*"
-	EMPH = r"\*"
-
-class Context(dict):
-	def __init__(self):
-		super().__init__({
-				Tag.EMPH: 0,
-				Tag.STRONG: 0,
-		})
-	def toggle(self, key, lineno):
-		self[key] = lineno if self[key] == 0 else 0
+class Tag:
+	STRONG = "**"
+	EMPH = "*"
+	def __init__(self, val, lineno):
+		self.val = val
+		self.lineno = lineno
+	def __eq__(self, other):
+		return self.val == other
 
 t_CHAR = r"."
 
@@ -32,17 +28,25 @@ def t_INVALID(t):
 	print(f"ERROR line {t.lexer.lineno}: Invalid sequence '{t.value}'")
 	t.lexer.errors += 1
 
-@TOKEN(Tag.STRONG.value)
-def t_STRONG(t):
-	t.lexer.context.toggle(Tag.STRONG, t.lexer.lineno)
+def lex_tag(t, tag):
+	if tag in t.lexer.open_tags:
+		if t.lexer.open_tags[-1] != tag:
+			print(f"ERROR line {t.lexer.lineno}: Expected"
+					+ f"{t.lexer.open_tags[-1].value} before {tag.value}")
+			t.lexer.errors += 1
+		t.lexer.open_tags.remove(tag)
+	else:
+		t.lexer.open_tags.append(Tag(tag, t.lineno))
 	t.value = None
 	return t
 
-@TOKEN(Tag.EMPH.value)
+def t_STRONG(t):
+	r"\*\*"
+	return lex_tag(t, Tag.STRONG)
+
 def t_EMPH(t):
-	t.lexer.context.toggle(Tag.EMPH, t.lexer.lineno)
-	t.value = None
-	return t
+	r"\*"
+	return lex_tag(t, Tag.EMPH)
 
 def t_ENDPARA(t):
 	r"[ ]*\n[ ]*\n[ ]*(\n[ ]*)*"
@@ -61,17 +65,16 @@ def t_error(t):
 	t.lexer.errors += 1
 
 def t_eof(t):
-	for key, val in t.lexer.context.items():
-		if val != 0:
-			print(f"ERROR: Unmatched {key.value} tag on line {val}")
-			t.lexer.errors += 1
+	for tag in t.lexer.open_tags:
+		print(f"ERROR: Unmatched {tag.val} tag on line {tag.lineno}")
+		t.lexer.errors += 1
 	if t.lexer.errors != 0:
 		print(f"*** {t.lexer.errors} errors detected ***")
 		sys.exit(1)
 
 def new_lexer():
 	lexer = ply.lex.lex()
-	lexer.context = Context()
+	lexer.open_tags = []
 	lexer.errors = 0
 	return lexer
 

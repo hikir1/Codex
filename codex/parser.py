@@ -68,5 +68,4 @@ if __name__ == '__main__':
 	parser = new_parser()
 	print(parser.parse(sys.argv[1]))
 else:
-	import codex.lexer
-	from codex.lexer import tokens
+	from lexer import tokens
