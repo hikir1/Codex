@@ -1,24 +1,26 @@
 def compile(codex, f):
-	context = codex_lexer.Context()
 	f.write('<!DOCTYPE html><html><head></head><body>')
 	for block in codex:
 		assert isinstance(block, codex_parser.Paragraph), f"Unknown block type: {type(block)}"
-		write_paragraph(block, f, context)
+		write_paragraph(block, f)
 	f.write('</body></html>')
 
-def write_paragraph(paragraph, f, context):
+def write_paragraph(paragraph, f):
 	assert len(paragraph) > 0
 	f.write('<p>')
-	write_word(paragraph[0], f, context)
+	tag_stack = []
+	write_word(paragraph[0], f, tag_stack, no_space=True)
 	for word in paragraph[1:]:
-		f.write(' ')
-		write_word(word, f, context)
+		write_word(word, f, tag_stack, no_space=False)
 	f.write('</p>')
 
-def write_word(word, f, context):
+def write_word(word, f, tag_stack, no_space):
+	assert len(word) > 0
+	if not no_space and not isinstance(word[0], codex_lexer.Tag):
+		f.write(' ')
 	for c in word:
 		if isinstance(c, codex_lexer.Tag):
-			write_tag(c, f, context)
+			write_tag(c, f, tag_stack)
 		elif c == '<':
 			f.write('&lt;')
 		elif c == '>':
@@ -28,21 +30,19 @@ def write_word(word, f, context):
 		else:
 			f.write(c)
 
-def write_tag(tag, f, context):
-	if tag is codex_lexer.Tag.EMPH:
-		if context[codex_lexer.Tag.EMPH]:
-			f.write("</em>")
-		else:
-			f.write("<em>")
-		context.toggle(codex_lexer.Tag.EMPH)
-	elif tag is codex_lexer.Tag.STRONG:
-		if context[codex_lexer.Tag.STRONG]:
-			f.write("</strong>")
-		else:
-			f.write("<strong>")
-		context.toggle(codex_lexer.Tag.STRONG)
+def write_tag(tag, f, tag_stack):
+	Tag = codex_lexer.Tag
+	TAG_LABELS = {
+		Tag.EMPH: "em",
+		Tag.STRONG: "strong",
+	}
+	assert tag in TAG_LABELS
+	if len(tag_stack) != 0 and tag_stack[-1] == tag:
+		tag_stack.pop()
+		f.write(f"</{TAG_LABELS[tag]}>")
 	else:
-		print(f"ERROR: Unknown tag: {tag}")
+		tag_stack.append(tag)
+		f.write(f"<{TAG_LABELS[tag]}>")
 
 if __name__ == "__main__":
 	import sys

@@ -12,14 +12,9 @@ tokens = (
 	"INVALID",
 )
 
-class Tag:
+class Tag(enum.Enum):
 	STRONG = "**"
 	EMPH = "*"
-	def __init__(self, val, lineno):
-		self.val = val
-		self.lineno = lineno
-	def __eq__(self, other):
-		return self.val == other
 
 t_CHAR = r"."
 
@@ -29,14 +24,18 @@ def t_INVALID(t):
 	t.lexer.errors += 1
 
 def lex_tag(t, tag):
-	if tag in t.lexer.open_tags:
-		if t.lexer.open_tags[-1] != tag:
+	try:
+		t.lexer.tag_linenos.pop(tag)
+		if t.lexer.tag_stack[-1] != tag:
 			print(f"ERROR line {t.lexer.lineno}: Expected"
-					+ f"{t.lexer.open_tags[-1].value} before {tag.value}")
+					+ f"{t.lexer.tag_stack[-1].value} before {tag.value}")
 			t.lexer.errors += 1
-		t.lexer.open_tags.remove(tag)
-	else:
-		t.lexer.open_tags.append(Tag(tag, t.lineno))
+			t.lexer.tag_stack.remove(tag)
+		else:
+			t.lexer.tag_stack.pop()
+	except KeyError:
+		t.lexer.tag_stack.append(tag)
+		t.lexer.tag_linenos[tag] = t.lexer.lineno
 	t.value = None
 	return t
 
@@ -48,8 +47,16 @@ def t_EMPH(t):
 	r"\*"
 	return lex_tag(t, Tag.EMPH)
 
+def check_tags(t):
+	for tag in t.lexer.tag_stack:
+		print(f"ERROR: Unmatched {tag.value} tag on line {t.lexer.tag_linenos[tag]}")
+		t.lexer.errors += 1
+	t.lexer.tag_stack.clear()
+	t.lexer.tag_linenos.clear()
+
 def t_ENDPARA(t):
 	r"[ ]*\n[ ]*\n[ ]*(\n[ ]*)*"
+	check_tags(t)
 	t.lexer.lineno += t.value.count("\n")
 	t.value = None
 	return t
@@ -65,16 +72,15 @@ def t_error(t):
 	t.lexer.errors += 1
 
 def t_eof(t):
-	for tag in t.lexer.open_tags:
-		print(f"ERROR: Unmatched {tag.val} tag on line {tag.lineno}")
-		t.lexer.errors += 1
+	check_tags(t)
 	if t.lexer.errors != 0:
 		print(f"*** {t.lexer.errors} errors detected ***")
 		sys.exit(1)
 
 def new_lexer():
 	lexer = ply.lex.lex()
-	lexer.open_tags = []
+	lexer.tag_stack = []
+	lexer.tag_linenos = {}
 	lexer.errors = 0
 	return lexer
 
